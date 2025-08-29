@@ -140,7 +140,9 @@ export const CompanyInfoForm: React.FC<CompanyInfoFormProps> = ({
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#078147] focus:border-transparent"
           />
           {errors.companyName && (
-            <p className="mt-1 text-sm text-red-600">{errors.companyName}</p>
+            <p className="mt-1 text-sm text-red-600 text-left">
+              {errors.companyName}
+            </p>
           )}
         </div>
 
@@ -236,7 +238,9 @@ export const CompanyInfoForm: React.FC<CompanyInfoFormProps> = ({
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#078147] focus:border-transparent"
             />
             {errors.pec_email && (
-              <p className="mt-1 text-sm text-red-600">{errors.pec_email}</p>
+              <p className="mt-1 text-sm text-red-600 text-left">
+                {errors.pec_email}
+              </p>
             )}
           </div>
         </div>

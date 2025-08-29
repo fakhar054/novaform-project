@@ -1,7 +1,7 @@
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { useExitIntent } from "@/hooks/useExitIntent";
 import ExitIntentPopup from "@/components/ExitIntentPopup";
 import Index from "./pages/Index";
@@ -27,11 +27,38 @@ import AdminProtectRoute from "./components/AdminProtectedRoute";
 import { SubscriptionPlan } from "./pages/SubscriptionPlan";
 import Success from "./pages/Success";
 import InvoiceDetail from "./InvoiceDetail";
+import { useEffect, useState } from "react";
+import AuthListener from "./components/AuthListener";
+import UpdatePassword from "./pages/Update-password";
 
 const queryClient = new QueryClient();
 
 const AppContent = () => {
-  const { isTriggered, resetTrigger } = useExitIntent();
+  const [isTriggered, setIsTriggered] = useState(false);
+  const location = useLocation();
+
+  const resetTrigger = () => setIsTriggered(false);
+
+  useEffect(() => {
+    const excludedRoutes = [
+      "/dashboard",
+      "/super-admin",
+      "/super-admin-login",
+      "/login",
+      "/invoice/:invoice_Id",
+      "/success",
+      "/forgot-password",
+    ];
+    if (excludedRoutes.includes(location.pathname)) {
+      return;
+    }
+
+    const hasSeenPopup = localStorage.getItem("hasSeenExitPopup");
+    if (!hasSeenPopup) {
+      setIsTriggered(true);
+      localStorage.setItem("hasSeenExitPopup", "true");
+    }
+  }, [location.pathname]);
 
   return (
     <>
@@ -76,6 +103,8 @@ const AppContent = () => {
           }
         />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/update-password" element={<UpdatePassword />} />
+
         <Route path="/invoice/:invoice_Id" element={<InvoiceDetail />} />
         <Route path="/verify-2fa" element={<TwoFactorVerification />} />
         <Route path="/payment" element={<Payment />} />
@@ -83,6 +112,8 @@ const AppContent = () => {
         <Route path="/success" element={<Success />} />
 
         <Route path="/landing" element={<Landing />} />
+        <Route path="/auth-listener" element={<AuthListener />} />
+
         <Route path="*" element={<NotFound />} />
       </Routes>
       <ExitIntentPopup isOpen={isTriggered} onClose={resetTrigger} />

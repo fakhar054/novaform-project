@@ -52,19 +52,68 @@ export const Invoices: React.FC = () => {
     },
   ];
 
+  // useEffect(() => {
+  //   const fetchInvoices = async () => {
+  //     const { data, error } = await supabase.auth.getUser();
+  //     const user_id = data.user?.id;
+
+  //     try {
+  //       const { data, error } = await supabase
+  //         .from("invoices")
+  //         .select("*")
+  //         .eq("user_id", user_id);
+
+  //       if (error) {
+  //         console.error("Error fetching invoices:", error.message);
+  //       } else {
+  //         setInvoicesDynamic(data);
+  //         console.log("data from inoice table ", data);
+  //         setTotal_Invoices(data?.length);
+  //       }
+  //     } catch (err) {
+  //       console.error("Unexpected error:", err.message);
+  //     } finally {
+  //       setLoading(false);
+  //     }
+  //   };
+
+  //   fetchInvoices();
+  // }, []);
+
   useEffect(() => {
     const fetchInvoices = async () => {
+      setLoading(true);
       try {
-        const { data, error } = await supabase.from("invoices").select("*");
-
-        if (error) {
-          console.error("Error fetching invoices:", error.message);
-        } else {
-          setInvoicesDynamic(data);
-          console.log("data from inoice table ", data);
-          setTotal_Invoices(data?.length);
+        // 1. Get logged-in user
+        const { data: userData, error: userError } =
+          await supabase.auth.getUser();
+        if (userError) {
+          console.error("Error fetching user:", userError.message);
+          setLoading(false);
+          return;
         }
-      } catch (err) {
+
+        const user_id = userData.user?.id;
+        if (!user_id) {
+          console.error("No logged-in user found.");
+          setLoading(false);
+          return;
+        }
+
+        // 2. Fetch invoices for that user
+        const { data: invoiceData, error: invoiceError } = await supabase
+          .from("invoices")
+          .select("*")
+          .eq("user_id", user_id);
+
+        if (invoiceError) {
+          console.error("Error fetching invoices:", invoiceError.message);
+        } else {
+          setInvoicesDynamic(invoiceData || []);
+          console.log("Invoices:", invoiceData);
+          setTotal_Invoices(invoiceData?.length || 0);
+        }
+      } catch (err: any) {
         console.error("Unexpected error:", err.message);
       } finally {
         setLoading(false);
@@ -130,7 +179,7 @@ export const Invoices: React.FC = () => {
     doc.setFontSize(14);
     doc.text("Cliente", 140, 40);
     doc.setFont("helvetica", "bold");
-    doc.text(`${invoice.customer_name}`, 140, 48);
+    doc.text(`${invoice?.customer_name}`, 140, 48);
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
 
@@ -300,13 +349,6 @@ export const Invoices: React.FC = () => {
     navigate(`/invoice/${id}`);
   };
 
-  // const formatCurrencyItalian = (amount) => {
-  //   return new Intl.NumberFormat("it-IT", {
-  //     style: "currency",
-  //     currency: "EUR",
-  //   }).format(amount);
-  // };
-
   const formatCurrencyItalian = (amount) => {
     const formatted = new Intl.NumberFormat("it-IT", {
       style: "currency",
@@ -427,8 +469,8 @@ export const Invoices: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                      {invoice.status.charAt(0).toUpperCase() +
-                        invoice.status.slice(1)}
+                      {invoice.status?.charAt(0).toUpperCase() +
+                        invoice.status?.slice(1)}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

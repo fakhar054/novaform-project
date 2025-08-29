@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Plus, Save, X, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +58,11 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
   const [plan_id, set_plan_id] = useState();
   const [price, setPrice] = useState();
 
+  const [uuid_user, setUser_uuid] = useState("");
+  const [manualPlan, setManualPlan] = useState();
+  const [manualPlanType, setManualPlanType] = useState("");
+  //for authnitication
+
   useEffect(() => {
     const fetchPlans = async () => {
       setLoading(true);
@@ -75,7 +80,9 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
     fetchPlans();
   }, []);
 
-  console.log("Data coming in Plans", plans);
+  useEffect(() => {
+    console.log("manualPlanType updated: ", manualPlanType);
+  }, [manualPlanType]);
 
   const [formData, setFormData] = useState({
     // General Info
@@ -234,9 +241,19 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
   const validatePEC = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
-
   const validateSDI = (sdi: string) => {
     return /^[A-Z0-9]{7}$/.test(sdi.toUpperCase());
+  };
+
+  const validateCognome = (contactPerson) => {
+    return /^[A-Za-z\s]{3,}$/.test(contactPerson);
+  };
+  const validatePhone = (phone: string) => {
+    return /^[0-9]+$/.test(phone.trim());
+  };
+
+  const validateZipCode = (zip: string) => {
+    return /^[0-9]{5,}$/.test(zip.trim());
   };
 
   const handleInputChange = async (field: string, value: string | boolean) => {
@@ -245,7 +262,6 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
       [field]: value,
     }));
 
-    // Real-time validation for specific fields
     const newErrors = { ...errors };
     if (
       field === "vatNumber" &&
@@ -280,6 +296,43 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
       delete newErrors.sdiCode;
     }
 
+    // Validation
+
+    if (
+      field === "contactPerson" &&
+      typeof value === "string" &&
+      value &&
+      !validateCognome(value)
+    ) {
+      newErrors.contactPerson =
+        "Cognome must be at least 3 letters, only letters";
+    } else if (field === "contactPerson") {
+      delete newErrors.contactPerson;
+    }
+
+    if (
+      field === "phone" &&
+      typeof value === "string" &&
+      value &&
+      !validatePhone(value)
+    ) {
+      newErrors.phone = "Phone number must be only numbers 0-9";
+    } else if (field === "phone") {
+      delete newErrors.phone;
+    }
+
+    if (
+      field === "zipCode" &&
+      typeof value === "string" &&
+      value && // <-- important
+      !validateZipCode(value)
+    ) {
+      newErrors.zipCode =
+        "Zip code must be at least 5 digits long and contain only numbers";
+    } else if (field === "zipCode") {
+      delete newErrors.zipCode;
+    }
+
     setErrors(newErrors);
   };
 
@@ -308,8 +361,89 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
     });
   };
 
+  function generateInvoiceNo() {
+    const year = new Date().getFullYear();
+    const randomNum = Math.floor(100 + Math.random() * 900);
+    return `NF:${year}-${randomNum}`;
+  }
+
+  function getDateAfterOneMonth() {
+    const today = new Date();
+    const nextMonth = new Date(today);
+    nextMonth.setMonth(today.getMonth() + 1);
+
+    const year = nextMonth.getFullYear();
+    const month = String(nextMonth.getMonth() + 1).padStart(2, "0"); // months are 0-indexed
+    const day = String(nextMonth.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  }
+
+  function getDateAfterOneYear() {
+    const today = new Date();
+    const nextYear = new Date(today);
+    nextYear.setFullYear(today.getFullYear() + 1);
+
+    const year = nextYear.getFullYear();
+    const month = String(nextYear.getMonth() + 1).padStart(2, "0");
+    const day = String(nextYear.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  }
+
+  const insertInvoice = async (
+    userId,
+    EmailPerson,
+    PlanName,
+    AmountPaid,
+    VatNumber,
+    Sdi,
+    customerName,
+    CityName,
+    ProvinceName,
+    duration
+  ) => {
+    const invoiceNo = generateInvoiceNo();
+    console.log("Function for inset into invoice has been called");
+    const { data, error } = await supabase.from("invoices").insert([
+      {
+        user_id: userId,
+        invoice_no: invoiceNo,
+        personal_email: EmailPerson,
+        vat: VatNumber,
+        sdi: Sdi,
+        customer_name: customerName,
+        amount_total: AmountPaid,
+        plan_name: PlanName,
+        city: CityName,
+        province: ProvinceName,
+        duration,
+        tax_percentage: 22,
+      },
+    ]);
+
+    if (error) {
+      console.error("Error inserting invoice:", error.message);
+    } else {
+      console.log("Invoice inserted:", data);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const PlanName = formData.plan;
+    const AmountPaid = manualPlan?.price_monthly;
+    const EmailPerson = formData.email;
+    const VatNumber = formData.vatNumber;
+    const Sdi = formData.sdi_code;
+    const customerName = formData.businessName;
+    const CityName = formData.city;
+    const ProvinceName = formData.province;
+
+    const monthEndPeriod = getDateAfterOneMonth();
+    const yearEndPeriod = getDateAfterOneYear();
+
     console.log("Creating account:", formData);
     // Step 1: Create user in Supabase Auth
     const { data: authData, error: authError } =
@@ -326,6 +460,8 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
     }
 
     const userId = authData.user.id;
+    console.log("Created User Id: ", userId);
+    setUser_uuid(userId);
 
     const { error: dbError } = await supabaseAdmin.from("users").insert({
       user_id: userId,
@@ -352,8 +488,7 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
       companyName: formData.companyName || null,
       tax_code: formData.tax_code || null,
       sdi_code: formData.sdi_code || null,
-      address: formData.address || null,
-      cap: formData.cap || null,
+      zipCode: formData.zipCode || null,
     });
 
     if (dbError) {
@@ -362,7 +497,92 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
       return;
     }
 
+    if (manualPlanType === "monthly") {
+      console.log(
+        "Please insert Monthly Data into supabase and userId is : ",
+        userId
+      );
+      const { data, error } = await supabase.from("subscription").upsert(
+        {
+          user_id: userId,
+          plan_name: formData.plan,
+          amount_paid: manualPlan?.price_monthly,
+          plan_id: manualPlan?.plan_product_id,
+          price_id: manualPlan?.stripe_price_monthly_id,
+          selected_plan_id: manualPlan?.stripe_price_monthly_id,
+          current_period_end: monthEndPeriod,
+        },
+        { onConflict: "user_id" }
+      );
+
+      if (error) {
+        console.error("Insert error:", error.message);
+      } else {
+        console.log("Inserted:", data);
+        // const PlanName = formData.plan;
+        // const AmountPaid = manualPlan?.price_monthly;
+        // const EmailPerson = formData.email;
+        // const VatNumber = formData.vatNumber;
+        // const Sdi = formData.sdi_code;
+        // const customerName = formData.businessName;
+        // const CityName = formData.city;
+        // const ProvinceName = formData.province;
+        const duration = "monthly";
+
+        insertInvoice(
+          userId,
+          EmailPerson,
+          PlanName,
+          AmountPaid,
+          VatNumber,
+          Sdi,
+          customerName,
+          CityName,
+          ProvinceName,
+          duration
+        );
+      }
+    } else if (manualPlanType === "yearly") {
+      console.log(
+        "Please insert Yearly Data into supabase and userId is : ",
+        userId
+      );
+      const { data, error } = await supabase.from("subscription").upsert(
+        {
+          user_id: userId,
+          plan_name: formData.plan,
+          price_id: manualPlan?.stripe_price_yearly_id,
+          plan_id: manualPlan?.plan_product_id,
+          amount_paid: manualPlan?.price_yearly,
+          selected_plan_id: manualPlan?.stripe_price_yearly_id,
+          current_period_end: yearEndPeriod,
+        },
+        { onConflict: "user_id" }
+      );
+      if (error) {
+        console.error("Insert error:", error.message);
+      } else {
+        console.log("Inserted:", data);
+        const duration = "yearly";
+
+        insertInvoice(
+          userId,
+          EmailPerson,
+          PlanName,
+          AmountPaid,
+          VatNumber,
+          Sdi,
+          customerName,
+          CityName,
+          ProvinceName,
+          duration
+        );
+      }
+    }
+
     console.log("User created and saved to DB");
+    console.log("User selected plan:", formData.plan);
+
     toast("Account Created Successfully");
 
     // Reset form
@@ -394,8 +614,6 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
       address: "",
       cap: "",
     });
-
-    //  setIsCreating(false);
   };
 
   const handleCancel = () => {
@@ -436,7 +654,7 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
       <Card className="bg-white border border-gray-200">
         <CardHeader>
           <CardTitle className="text-lg font-semibold text-gray-900">
-            Referent Detail
+            Referent Detail123
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -468,6 +686,11 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
                 }
                 placeholder="Dr. Mario Rossi"
               />
+              {errors.contactPerson && (
+                <p className="mt-1 text-sm text-red-600">
+                  {errors.contactPerson}
+                </p>
+              )}
             </div>
           </div>
 
@@ -496,6 +719,9 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
                 onChange={(e) => handleInputChange("phone", e.target.value)}
                 placeholder="+39 02 1234567"
               />
+              {errors.phone && (
+                <p className="mt-1 text-sm text-red-600">{errors.phone}</p>
+              )}
             </div>
           </div>
         </CardContent>
@@ -546,7 +772,7 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
 
             <div className="space-y-2">
               <Label htmlFor="tax_code">
-                Codice Fiscale (se diverso dalla P.IVA){" "}
+                Codice Fiscale (se diverso dalla P.IVA)
                 <span className="text-red-500">*</span>
               </Label>
               <Input
@@ -575,9 +801,9 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
               )}
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 text-left">
               <Label htmlFor="billingEmail">
-                Email PEC <span className="text-red-500">*</span>
+                Email PEC <span className="text-red-500 text-left">*</span>
               </Label>
               <Input
                 id="billingEmail"
@@ -589,7 +815,7 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
                 placeholder="pec@example.pec.it"
               />
               {errors.pecEmail && (
-                <p className="mt-1 text-sm text-red-600">{errors.pecEmail}</p>
+                <p className="mt-1 text-sm text-red-600 ">{errors.pecEmail}</p>
               )}
             </div>
           </div>
@@ -606,13 +832,15 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
         <CardContent className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
             <div className="space-y-2">
-              <Label htmlFor="address">
-                Indirizzo <span className="text-red-500">*</span>{" "}
+              <Label htmlFor="streetAddress">
+                Indirizzo123 <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="address"
-                value={formData.address}
-                onChange={(e) => handleInputChange("address", e.target.value)}
+                value={formData.streetAddress}
+                onChange={(e) =>
+                  handleInputChange("streetAddress", e.target.value)
+                }
                 placeholder="Via Roma 123"
               />
             </div>
@@ -620,15 +848,18 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="space-y-2">
-              <Label htmlFor="cap">
+              <Label htmlFor="zipCode">
                 CAP <span className="text-red-500">*</span>
               </Label>
               <Input
-                id="cap"
-                value={formData.cap}
-                onChange={(e) => handleInputChange("cap", e.target.value)}
+                id="zipCode"
+                value={formData.zipCode}
+                onChange={(e) => handleInputChange("zipCode", e.target.value)}
                 placeholder="234561"
               />
+              {errors.zipCode && (
+                <p className="mt-1 text-sm text-red-600">{errors.zipCode}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -646,7 +877,7 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
             <div className="space-y-2">
               <Label htmlFor="province">Provincia *</Label>
 
-              <Select
+              {/* <Select
                 value={formData.province}
                 onValueChange={(value) => handleInputChange("province", value)}
               >
@@ -657,6 +888,25 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
                   {italianProvinces.map((province) => (
                     <SelectItem key={province.code} value={province.name}>
                       {province.code} - {province.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select> */}
+
+              <Select
+                value={formData.province || ""}
+                onValueChange={(value) => {
+                  handleInputChange("province", value); // only store code in formData
+                }}
+              >
+                <SelectTrigger className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#078147] focus:border-transparent">
+                  <SelectValue placeholder="Select Province" />
+                </SelectTrigger>
+
+                <SelectContent>
+                  {italianProvinces.map((province) => (
+                    <SelectItem key={province.code} value={province.code}>
+                      {province.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -780,10 +1030,11 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
               <Label htmlFor="plan">Subscription Plan *</Label>
 
               <Select
-                value={formData.plan}
+                value={formData.plan || ""}
                 onValueChange={(value) => {
                   console.log("value from select ", value);
                   const selectedPlan = plans.find((p) => p.plan_name === value);
+                  setManualPlan(selectedPlan);
 
                   if (selectedPlan) {
                     setFormData((prev) => ({
@@ -794,6 +1045,7 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
                     set_plan_id(selectedPlan.id);
                   }
                   console.log("Selected Plan id:: ", plan_id);
+                  console.log("Selected Plan is:: ", manualPlan);
                 }}
               >
                 <SelectTrigger>
@@ -816,7 +1068,9 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
                 value={formData.billing_type}
                 onValueChange={(value) => {
                   handleInputChange("billing_type", value);
-                  console.log("selected type: ", value);
+                  console.log("selected type from value: ", value);
+                  setManualPlanType(value);
+                  console.log("selected type from state: ", manualPlanType);
                 }}
               >
                 <SelectTrigger>
@@ -824,7 +1078,7 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="monthly">Monthly </SelectItem>
-                  <SelectItem value="yealry">Yearly </SelectItem>
+                  <SelectItem value="yearly">Yearly </SelectItem>
                 </SelectContent>
               </Select>
             </div>

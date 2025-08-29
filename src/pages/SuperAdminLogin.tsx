@@ -454,7 +454,7 @@ const SuperAdminLogin = () => {
             <div className="w-12 h-1 bg-green-600 mx-auto rounded-full"></div>
           </div>
 
-          <div className="mb-8">
+          <div className="mb-8 text-left">
             <h2 className="text-3xl font-bold text-gray-900 mb-2">
               Admin Login
             </h2>
@@ -462,7 +462,7 @@ const SuperAdminLogin = () => {
           </div>
 
           <form onSubmit={handleCredentialsSubmit} className="space-y-6">
-            <div className="space-y-2">
+            <div className="space-y-2 text-left">
               <Label
                 htmlFor="email"
                 className="text-sm font-medium text-gray-700"
@@ -487,7 +487,7 @@ const SuperAdminLogin = () => {
               )}
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 text-left">
               <Label
                 htmlFor="password"
                 className="text-sm font-medium text-gray-700"

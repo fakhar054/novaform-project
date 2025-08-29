@@ -24,7 +24,7 @@ const ForgotPassword = () => {
     }
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/landing`,
+      redirectTo: `${window.location.origin}/update-password`,
     });
     if (error) {
       toast.error(error.message);
@@ -32,12 +32,6 @@ const ForgotPassword = () => {
       toast.success("Reset link sent to your email!");
     }
 
-    // if (!/\S+@\S+\.\S+/.test(email)) {
-    //   setError("Please enter a valid email address");
-    //   return;
-    // }
-
-    // Simulate password reset request
     console.log("Password reset requested for:", email);
     setIsSubmitted(true);
   };
@@ -162,7 +156,7 @@ const ForgotPassword = () => {
             <div className="w-12 h-1 bg-green-600 mx-auto rounded-full"></div>
           </div>
 
-          <div className="mb-8">
+          <div className="mb-8 text-left">
             <h2 className="text-3xl font-bold text-gray-900 mb-2">
               Forgot your password?
             </h2>
@@ -173,7 +167,7 @@ const ForgotPassword = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
+            <div className="space-y-2 text-left ">
               <Label
                 htmlFor="email"
                 className="text-sm font-medium text-gray-700"

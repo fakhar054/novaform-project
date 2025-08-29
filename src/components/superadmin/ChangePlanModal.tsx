@@ -37,13 +37,14 @@ export const ChangePlanModal: React.FC<ChangePlanModalProps> = ({
 }) => {
   const [selectedPlan, setSelectedPlan] = useState(user.plan);
   const [latestPlan, setLatestPlan] = useState(user.plan);
-  const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">(
-    "monthly"
-  );
+  const [billingCycle, setBillingCycle] = useState("");
   const [AllPlans, setAllPlans] = useState([]);
 
-  const userId = user.id;
+  const [newPlan, setNewPlan] = useState();
 
+  console.log("Billing Cycle is : ", billingCycle);
+
+  const userId = user.id;
   const fetchSubscriptionPlans = async () => {
     const { data, error } = await supabase
       .from("subscription_plan")
@@ -75,57 +76,10 @@ export const ChangePlanModal: React.FC<ChangePlanModalProps> = ({
   }, [user]);
 
   console.log("ALl plans", AllPlans);
-
   const handleSave = async () => {
-    const {
-      data: { session },
-      error,
-    } = await supabase.auth.getSession();
-
-    if (error) {
-      console.log("Error getting session:", error.message);
-      return null;
-    }
-    console.log("Access token is:", session?.access_token);
-    console.log("user ID is:", userId);
-
-    const billingCycleValue = billingCycle === "yearly" ? 1 : 0;
-    const newStripePriceId =
-      billingCycle === 1
-        ? AllPlans.monthly_product_id
-        : AllPlans.monthly_product_id;
-    const payload = {
-      user_id: userId,
-      plan_id: selectedPlan,
-      billing_cycle: billingCycleValue,
-      newStripePriceId,
-    };
-
-    try {
-      const res = await fetch(
-        "https://ajbxscredobhqfksaqrk.supabase.co/functions/v1/update-plan",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify(payload),
-        }
-      );
-
-      const result = await res.json();
-      if (res.ok) {
-        toast.success("Plan updated successfully!");
-        onClose();
-      } else {
-        toast.error(result.error || "Failed to update plan.");
-      }
-    } catch (error) {
-      console.error("Unexpected error:", error);
-      toast.error("Something went wrong while updating the plan.");
-    }
+    console.log("Clicked save button");
   };
+
   const getCurrentPlan = () => AllPlans.find((p) => p.id === latestPlan);
   const getSelectedPlan = () => AllPlans.find((p) => p.id === selectedPlan);
 
@@ -161,6 +115,8 @@ export const ChangePlanModal: React.FC<ChangePlanModalProps> = ({
               value={selectedPlan}
               onValueChange={(value) => {
                 setSelectedPlan(value);
+                console.log("Selected plan:", value);
+
                 if (onPlanChange) onPlanChange(value);
               }}
             >
@@ -171,12 +127,7 @@ export const ChangePlanModal: React.FC<ChangePlanModalProps> = ({
                 {AllPlans.map((plan) => (
                   <SelectItem key={plan.id} value={plan.id}>
                     <div className="flex flex-col">
-                      <span className="font-medium">
-                        {plan.monthly_plan_name}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        {plan.price}
-                      </span>
+                      <span className="font-medium">{plan.plan_name}</span>
                     </div>
                   </SelectItem>
                 ))}

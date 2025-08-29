@@ -19,7 +19,12 @@ const Login = () => {
   const [rememberMe, setRememberMe] = useState(false);
   const [errors, setErrors] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
+  const [twoStepEnabled, setTwoStepEnabled] = useState();
+  const [myToken, setMyToken] = useState("");
+  const [myUUID, setMyUUID] = useState("");
 
+  const [step, setStep] = useState("login");
+  const [otp, setOtp] = useState("");
   // const handleSubmit = async (e: React.FormEvent) => {
   //   e.preventDefault();
   //   const newErrors = { email: "", password: "" };
@@ -109,6 +114,54 @@ const Login = () => {
   //   }
   // };
 
+  function getFormattedDateTime() {
+    const now = new Date();
+
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  }
+
+  const updateLastLogin = async (userId: string) => {
+    const formattedDateTime = getFormattedDateTime();
+
+    const { error } = await supabase
+      .from("users")
+      .update({ last_login: formattedDateTime })
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("Failed to update lastLogin:", error.message);
+      return false;
+    }
+
+    console.log(`lastLogin updated for user ${userId}: ${formattedDateTime}`);
+    return true;
+  };
+
+  const fetchTwostep = async (user_id) => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("users")
+      .select("two_step_verification")
+      .eq("user_id", user_id)
+      .single();
+
+    if (error) {
+      console.error("Error fetching two_step_verification:", error.message);
+    } else {
+      console.log("Two step_varifiaction: ", data?.two_step_verification);
+      setTwoStepEnabled(data?.two_step_verification);
+    }
+    setLoading(false);
+    return data?.two_step_verification;
+  };
+
   const getUserRole = async (uuid) => {
     const { data, error } = await supabase
       .from("users")
@@ -142,37 +195,145 @@ const Login = () => {
     if (newErrors.email || newErrors.password) return;
 
     try {
+      setLoading(true);
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
+
       if (error) {
         console.log("Error while Login ", error.message);
         toast.error(error.message);
+        setLoading(false);
+        return;
+      }
+
+      const token = data.session?.access_token;
+      const uuid = data.user?.id;
+      const emailFromUser = data.user?.email;
+
+      console.log("Login successful → UUID:", uuid);
+
+      getUserRole(uuid);
+
+      const twoStep = await fetchTwostep(uuid);
+      console.log("Two-step verification status:", twoStep);
+
+      if (twoStep) {
+        // Step 4a: Send OTP if enabled
+        const { error: otpError } = await supabase.auth.signInWithOtp({
+          email: emailFromUser,
+          options: {
+            emailRedirectTo: "http://localhost:8080/auth-listener",
+          },
+        });
+
+        if (otpError) {
+          toast.error(otpError.message);
+          console.log("OTP Error:", otpError.message);
+        } else {
+          setStep("success");
+          toast.success("Verification link sent to your email");
+        }
       } else {
-        console.log("Data from login: ", data);
-        const token = data.session.access_token;
-        const uuid = data.user.id;
-        getUserRole(uuid);
+        // Step 4b: Direct login if disabled
+        localStorage.setItem("token", token!);
+        localStorage.setItem("id", uuid!);
 
-        localStorage.setItem("token", token);
-        localStorage.setItem("id", uuid);
-
-        // const role = localStorage.getItem("role");
-        // console.log("Role From login: ", role);
+        updateLastLogin(uuid);
 
         toast.success("Login Successfully");
         navigate("/dashboard");
       }
-    } catch (error) {}
+
+      setLoading(false);
+    } catch (err) {
+      console.log("Error while login:", err);
+      toast.error("Something went wrong!");
+      setLoading(false);
+    }
   };
+
+  // const handleSubmit = async (e: React.FormEvent) => {
+  //   e.preventDefault();
+  //   const newErrors = { email: "", password: "" };
+  //   if (!email) {
+  //     newErrors.email = "Email is required";
+  //   } else if (!/\S+@\S+\.\S+/.test(email)) {
+  //     newErrors.email = "Please enter a valid email";
+  //   }
+  //   if (!password) {
+  //     newErrors.password = "Password is required";
+  //   } else if (password.length < 6) {
+  //     newErrors.password = "Password must be at least 6 characters";
+  //   }
+  //   setErrors(newErrors);
+  //   if (newErrors.email || newErrors.password) return;
+
+  //   try {
+  //     const { data, error } = await supabase.auth.signInWithPassword({
+  //       email,
+  //       password,
+  //     });
+
+  //     if (error) {
+  //       console.log("Error while Login ", error.message);
+  //       toast.error(error.message);
+  //       return;
+  //     } else {
+  //       await supabase.auth.signOut();
+  //       console.log("Data from login: ", data);
+  //       const token = data.session.access_token;
+  //       const uuid = data.user.id;
+  //       console.log("UUID is :", uuid);
+
+  //       const email = data.user.email;
+  //       getUserRole(uuid);
+  //       const twoStep = await fetchTwostep(uuid);
+
+  //       console.log("To check two step verfication ::", twoStep);
+
+  //       const { error: otpError } = await supabase.auth.signInWithOtp({
+  //         email,
+  //         options: {
+  //           emailRedirectTo: "http://localhost:8080/auth-listener",
+  //         },
+  //       });
+  //       setLoading(false);
+
+  //       if (otpError) {
+  //         toast.error(otpError.message);
+  //         console.log("Error of optError: ", otpError.message);
+  //         return;
+  //       } else {
+  //         setStep("success");
+  //         toast.success("Link Send to Registered Email Address");
+
+  //         setLoading(false);
+  //       }
+  //     }
+  //   } catch (error) {
+  //     console.log("Error while sending emial: ", error);
+  //   }
+  // };
+
+  //       localStorage.setItem("token", token);
+  //       localStorage.setItem("id", uuid);
+  //       // const role = localStorage.getItem("role");
+  //       // console.log("Role From login: ", role);
+
+  //       toast.success("Login Successfully");
+  //       navigate("/dashboard");
+  //     }
+  // };
 
   return (
     <div className="min-h-screen flex">
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-green-50 to-green-100 flex-col justify-center items-center p-12 relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-green-50 to-green-100 flex-col justify-center items-center p-12 relative overflow-hidden ">
         <div className="absolute inset-0 bg-gradient-to-br from-green-600/5 to-green-800/10"></div>
         <div className="relative z-10 text-center max-w-md">
-          <div className="mb-8">
+          <div className="mb-8 ">
             <h1 className="text-4xl font-bold text-green-800 mb-2">NovaFarm</h1>
             <div className="w-16 h-1 bg-green-600 mx-auto rounded-full"></div>
           </div>
@@ -209,13 +370,13 @@ const Login = () => {
             <div className="w-12 h-1 bg-green-600 mx-auto rounded-full"></div>
           </div>
 
-          <div className="mb-8">
+          <div className="mb-8 text-left">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Sign In</h1>
             <p className="text-gray-600">Access your NovaFarm dashboard</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
+            <div className="space-y-2 text-left">
               <Label
                 htmlFor="email"
                 className="text-sm font-medium text-gray-700"
@@ -240,7 +401,7 @@ const Login = () => {
               )}
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 text-left">
               <Label
                 htmlFor="password"
                 className="text-sm font-medium text-gray-700"

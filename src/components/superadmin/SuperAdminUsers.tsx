@@ -47,7 +47,6 @@ import Spinner from "../Spinner";
 import { toast } from "sonner";
 
 export const SuperAdminUsers: React.FC = () => {
-  // `allUsers` will hold the complete, unfiltered list of users from Supabase
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
@@ -71,14 +70,13 @@ export const SuperAdminUsers: React.FC = () => {
 
   const handleFormSuccess = () => {
     setIsCreating(false);
-    fetchUsers(); // Re-fetch users to show the newly created account
+    fetchUsers();
   };
 
   const handleFormCancel = () => {
     setIsCreating(false);
   };
 
-  // Function to fetch users from Supabase
   const fetchUsers = async () => {
     setLoading(true);
     const { data, error } = await supabase.from("users").select("*");
@@ -94,13 +92,10 @@ export const SuperAdminUsers: React.FC = () => {
     setLoading(false);
   };
 
-  // Fetch users on component mount
   useEffect(() => {
     fetchUsers();
   }, []);
 
-  // Use useMemo to memoize the filtered and searched users list
-  // This re-calculates only when `allUsers`, `searchTerm`, `statusFilter`, or `planFilter` change.
   const displayUsers = useMemo(() => {
     let filteredList = [...allUsers];
 
@@ -142,13 +137,13 @@ export const SuperAdminUsers: React.FC = () => {
   // Helper functions for badges
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "active":
+      case "Active":
         return (
           <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
             Active
           </Badge>
         );
-      case "suspended":
+      case "Suspended":
         return (
           <Badge className="bg-red-100 text-red-800 hover:bg-red-100">
             Suspended
@@ -261,45 +256,12 @@ export const SuperAdminUsers: React.FC = () => {
     setSelectedUser(null);
   };
 
-  // const handleSuspendActivate = (user: any) => {
-  //   setSelectedUser(user);
-  //   const action = user.accountStatus === "active" ? "suspend" : "activate";
-  //   setConfirmAction({
-  //     type: action,
-  //     message: `Are you sure you want to ${action} ${user.businessName}?`,
-  //   });
-  //   setShowConfirmAction(true);
-  // };
-
-  // const handleConfirmAction = async () => {
-  //   if (!selectedUser || !selectedUser.id) {
-  //     return;
-  //   }
-  //   const newStatus =
-  //     selectedUser.accountStatus === "suspended" ? "active" : "suspended";
-
-  //   const { error } = await supabase
-  //     .from("users")
-  //     .update({ accountStatus: newStatus })
-  //     .eq("uuid", selectedUser.uuid);
-
-  //   if (error) {
-  //     console.error("Error updating account status:", error.message);
-
-  //     return;
-  //   }
-
-  //   await fetchUsers(); // Re-fetch all users to update the UI with new status
-  //   setShowConfirmAction(false);
-  //   setConfirmAction(null);
-  //   setSelectedUser(null);
-  // };
-
   // Conditional rendering for UserDetailView
   if (showUserDetail && selectedUser) {
     return (
       <UserDetailView
         user={selectedUser}
+        onUserUpdated={(updatedUser) => setSelectedUser(updatedUser)}
         onBack={() => {
           setShowUserDetail(false);
           setSelectedUser(null);
@@ -328,7 +290,6 @@ export const SuperAdminUsers: React.FC = () => {
           .trim()
       : "";
 
-  // Loading state
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-[calc(100vh-200px)]">
@@ -407,7 +368,7 @@ export const SuperAdminUsers: React.FC = () => {
           {/* Users Table */}
           <Card className="bg-white border border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg font-semibold text-gray-900">
+              <CardTitle className="text-lg font-semibold text-gray-900 text-left">
                 Users ({displayUsers.length})
               </CardTitle>
             </CardHeader>
@@ -440,7 +401,7 @@ export const SuperAdminUsers: React.FC = () => {
                     {displayUsers.length > 0 ? (
                       displayUsers.map((user) => (
                         <TableRow
-                          key={user.id} // Assuming 'uuid' is the unique identifier from Supabase
+                          key={user.id}
                           className="border-gray-200 hover:bg-gray-50"
                         >
                           <TableCell>
@@ -454,7 +415,9 @@ export const SuperAdminUsers: React.FC = () => {
                             </div>
                           </TableCell>
                           <TableCell className="text-left">
-                            {getStatusBadge(user.accountStatus)}
+                            {getStatusBadge(
+                              user.accountStatus ? "Active" : "Suspended"
+                            )}
                           </TableCell>
                           <TableCell className="text-left">
                             {getPlanBadge(user.plan)}

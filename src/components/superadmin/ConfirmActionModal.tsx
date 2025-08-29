@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -9,7 +8,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from "@/components/ui/alert-dialog";
 
 interface ConfirmActionModalProps {
   isOpen: boolean;
@@ -27,23 +26,26 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
   message,
   onConfirm,
   onCancel,
-  confirmButtonText = 'Confirm',
-  isDestructive = false
+  confirmButtonText = "Confirm",
+  isDestructive = false,
 }) => {
+  console.log("Confirm box opened: ");
   return (
     <AlertDialog open={isOpen} onOpenChange={onCancel}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {message}
-          </AlertDialogDescription>
+          <AlertDialogTitle>{title} +123</AlertDialogTitle>
+          <AlertDialogDescription>{message} </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={onCancel}>Cancel</AlertDialogCancel>
-          <AlertDialogAction 
+          <AlertDialogAction
             onClick={onConfirm}
-            className={isDestructive ? 'bg-red-600 hover:bg-red-700' : 'bg-[#1C9B7A] hover:bg-[#158a69]'}
+            className={
+              isDestructive
+                ? "bg-red-600 hover:bg-red-700"
+                : "bg-[#1C9B7A] hover:bg-[#158a69]"
+            }
           >
             {confirmButtonText}
           </AlertDialogAction>

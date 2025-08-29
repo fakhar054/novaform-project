@@ -100,7 +100,6 @@ export const AccountSettings: React.FC = () => {
     if (error) {
       console.error("Data fetch error:", error.message);
     } else {
-      // console.log("data fetched from  Account Setting", data);
       setUserData(data);
       setPersonalData({
         firstName: data.businessName || "",
@@ -119,10 +118,10 @@ export const AccountSettings: React.FC = () => {
       });
 
       setBillingData({
-        streetAddress: data.address || "",
+        streetAddress: data.streetAddress || "",
         city: data.city || "",
         province: data.province || "",
-        zipCode: data.cap || "",
+        zipCode: data.zipCode || "",
         country: data.country || "",
       });
     }
@@ -152,8 +151,8 @@ export const AccountSettings: React.FC = () => {
     const { error } = await (supabase as any)
       .from("users")
       .update({
-        firstName: data.firstName,
-        lastName: data.lastName,
+        businessName: data.firstName,
+        contactPerson: data.lastName,
         email: data.email,
         phone: data.phone,
         language: data.language,
@@ -201,6 +200,7 @@ export const AccountSettings: React.FC = () => {
         vatNumber: data.vatNumber,
         sdi_code: data.sdi_code,
         billingEmail: data.pec_email,
+        tax_code: data.taxCode,
       })
       .eq("user_id", user.id);
 
@@ -208,10 +208,6 @@ export const AccountSettings: React.FC = () => {
       console.error("Update failed in company", error.message);
       setMessage({ type: "error", text: "Failed to update company info" });
     } else {
-      setMessage({
-        type: "success",
-        text: "Company information updated successfully!",
-      });
       setCompanyData(data);
       toast("Information updated successfully!");
       setTimeout(() => setMessage(null), 3000);
@@ -221,7 +217,7 @@ export const AccountSettings: React.FC = () => {
   };
 
   const handleSaveBillingAddress = async (data: typeof billingData) => {
-    // console.log("Billing Information", data);
+    console.log("Billing Information after updateing", data);
     setLoadingBilling(true);
     setMessage(null);
 
@@ -247,20 +243,16 @@ export const AccountSettings: React.FC = () => {
         province: data.province,
         country: data.country,
         zipCode: data.zipCode,
+        // tax_code:data
       })
       .eq("user_id", user.id);
 
     if (error) {
       console.error("Update failed in biling", error.message);
-      setMessage({ type: "error", text: "Failed to update company info" });
+      toast.error("Update failed in biling");
     } else {
-      setMessage({
-        type: "success",
-        text: "Company information updated successfully!",
-      });
       setBillingData(data);
       toast("Information updated successfully!");
-      setTimeout(() => setMessage(null), 3000);
     }
 
     // Simulate API call
@@ -276,14 +268,64 @@ export const AccountSettings: React.FC = () => {
     }, 3000);
   };
 
-  // 2FA handlers
-  const handleTwoFactorToggle = (enabled: boolean) => {
-    if (enabled) {
-      setTwoFactorMode("enable");
-      setShowTwoFactorModal(true);
+  useEffect(() => {
+    const twoFA = async () => {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        console.error("Error fetching user:", userError?.message);
+        return;
+      }
+
+      const user_id = user.id;
+
+      const { data, error } = await supabase
+        .from("users")
+        .select("two_step_verification")
+        .eq("user_id", user_id)
+        .single();
+
+      if (error) {
+        console.error("Error fetching two-step:", error.message);
+        return;
+      }
+
+      // Always set value (true or false) from DB
+      setTwoFactorEnabled(data?.two_step_verification ?? false);
+      console.log("Two-step fetched:", data?.two_step_verification);
+    };
+
+    twoFA();
+  }, []);
+
+  const handleTwoFactorToggle = async (enabled: boolean) => {
+    setTwoFactorEnabled(enabled);
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      console.error("Error fetching user:", userError?.message);
+      return;
+    }
+
+    const user_id = user.id;
+
+    const { error } = await supabase
+      .from("users")
+      .update({ two_step_verification: enabled })
+      .eq("user_id", user_id);
+
+    if (error) {
+      console.error("Error updating two-step:", error.message);
+      setTwoFactorEnabled(!enabled);
     } else {
-      setTwoFactorMode("disable");
-      setShowTwoFactorModal(true);
+      console.log("Two-step updated →", enabled);
     }
   };
 
@@ -292,7 +334,7 @@ export const AccountSettings: React.FC = () => {
 
     // Simulate API call
     setTimeout(() => {
-      setTwoFactorEnabled(twoFactorMode === "enable");
+      // setTwoFactorEnabled(twoFactorMode === "enable");
       setIsLoading(false);
       setShowTwoFactorModal(false);
       setMessage({
@@ -305,128 +347,12 @@ export const AccountSettings: React.FC = () => {
     }, 1000);
   };
 
-  // const fetchProfiles = async (user_id, newInfo) => {
-  //   const { data: existing, error: fetchError } = await supabase
-  //     .from("profile_Update")
-  //     .select("*")
-  //     .eq("user_id", user_id)
-  //     .single();
-
-  //   if (fetchError && fetchError.code !== "PGRST116") {
-  //     // PGRST116 = No rows found
-  //     console.error("Fetch error:", fetchError.message);
-  //     return null;
-  //   }
-
-  //   let result;
-  //   if (existing) {
-  //     // 2. Update
-  //     const { data, error } = await supabase
-  //       .from("profile_Update")
-  //       .update(newInfo)
-  //       .eq("user_id", user_id)
-  //       .select();
-
-  //     if (error) console.error("Update error:", error.message);
-  //     result = data;
-  //   } else {
-  //     // 3. Insert
-  //     const { data, error } = await supabase
-  //       .from("profile_Update")
-  //       .insert([{ user_id, ...newData }])
-  //       .select();
-
-  //     if (error) console.error("Insert error:", error.message);
-  //     else {
-  //       result = data;
-  //       console.log("Profile Table updated and result: ", result);
-  //     }
-  //   }
-
-  //   return result;
-  // };
-
-  // const handleChangePassword = async (e) => {
-  //   if (passwordData.newPassword !== passwordData.confirmPassword) {
-  //     toast.error("New Passord and Confrim Password are not same");
-  //   } else {
-  //     const { data, error } = await supabase.auth.updateUser({
-  //       password: passwordData.newPassword,
-  //     });
-
-  //     const {
-  //       data: { user },
-  //       error: userError,
-  //     } = await supabase.auth.getUser();
-
-  //     if (error) {
-  //       console.error("Password update error:", error.message);
-  //     } else {
-  //       toast.success("Password updated successfully!");
-  //       const id = user.id;
-  //       console.log("id at the time of password updated: ", id);
-  //       fetchProfiles("Password updated", id);
-  //     }
-  //   }
-  // };
-
-  const fetchProfiles = async (user_id, newInfo) => {
-    // Check if user exists
-    const { data: existing, error: fetchError } = await supabase
-      .from("profile_Update")
-      .select("id") // only need to check existence
-      .eq("user_id", user_id)
-      .single();
-
-    if (fetchError && fetchError.code !== "PGRST116") {
-      // PGRST116 = No rows found
-      console.error("Fetch error:", fetchError.message);
-      return null;
-    }
-
-    let result;
-
-    if (existing) {
-      // ✅ Update only changed_col
-      const { data, error } = await supabase
-        .from("profile_Update")
-        .update({ changed_col: newInfo })
-        .eq("user_id", user_id)
-        .select();
-
-      if (error) {
-        console.error("Update error:", error.message);
-      } else {
-        result = data;
-        console.log("Updated changed_col:", result);
-      }
-    } else {
-      // ✅ Insert new row
-      const { data, error } = await supabase
-        .from("profile_Update")
-        .insert([{ user_id, changed_col: newInfo }])
-        .select();
-
-      if (error) {
-        console.error("Insert error:", error.message);
-      } else {
-        result = data;
-        console.log("Inserted new row:", result);
-      }
-    }
-
-    return result;
-  };
-
   const handleChangePassword = async (e) => {
     e.preventDefault();
-
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       toast.error("New Password and Confirm Password are not same");
       return;
     }
-
-    // 🔹 Update password
     const { error: updateError } = await supabase.auth.updateUser({
       password: passwordData.newPassword,
     });
@@ -447,10 +373,21 @@ export const AccountSettings: React.FC = () => {
     }
 
     const id = user?.id;
-    console.log("id at the time of password updated:", id);
+    const today = new Date().toISOString().split("T")[0];
+
+    const { error: dbError } = await supabase
+      .from("profile_Update")
+      .upsert(
+        { user_id: id, password_date: today, changed_col: "Password Updated" },
+        { onConflict: "user_id" }
+      );
+
+    if (dbError) {
+      console.error("Error updating password date:", dbError.message);
+      return;
+    }
 
     toast.success("Password updated successfully!");
-    fetchProfiles(id, "Password updated");
   };
 
   if (loadingAll) {

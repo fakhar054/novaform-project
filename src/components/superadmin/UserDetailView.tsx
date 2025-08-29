@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ArrowLeft,
   Edit2,
@@ -39,18 +39,261 @@ import { ConfirmActionModal } from "./ConfirmActionModal";
 import { ResetPasswordModal } from "./ResetPasswordModal";
 import { ChangePlanModal } from "./ChangePlanModal";
 import { supabase } from "@/integrations/supabase/client";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface UserDetailViewProps {
   user: any;
   onBack: () => void;
+  onUserUpdated?: (updatedUser: any) => void;
 }
 
 export const UserDetailView: React.FC<UserDetailViewProps> = ({
   user,
   onBack,
+  onUserUpdated,
 }) => {
   const [editingSection, setEditingSection] = useState<string | null>(null);
+  const [subscriptionData, setSubscriptionData] = useState();
+  const [invoicesData, setInvoiceData] = useState([]);
+  const [total_price, setTotal_Price] = useState();
 
+  const fetchUserSubscription = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("subscription")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (error) {
+        console.log(
+          "Error while fetching subscription table in user details component: ",
+          error
+        );
+        return;
+      }
+      setSubscriptionData(data);
+
+      console.log("Subscription response against id: ", data);
+    } catch (err) {
+      console.error("Error fetching subscription:", err);
+      return [];
+    }
+  };
+
+  const fetchUserInvoices = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("invoices")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.log("Invoices Fetchingn Error");
+        return;
+      } else {
+        setInvoiceData(data);
+        console.log("Invoice Data from UserDetail interview: ", data);
+      }
+
+      return data || [];
+    } catch (err) {
+      console.error("Error fetching invoices:", err);
+      return [];
+    }
+  };
+
+  const generateInvoice = (invoice) => {
+    console.log("I am invoice::", invoice);
+    const tax_total = (invoice.tax_percentage / 100) * invoice.amount_total;
+
+    const priceAfterTax = invoice.amount_total + tax_total;
+    setTotal_Price(priceAfterTax);
+
+    const doc = new jsPDF();
+    // Company Header
+    doc.setFontSize(16);
+    doc.setTextColor(41, 128, 185);
+    doc.text("NovaFarm", 14, 20);
+
+    doc.setFontSize(11);
+    doc.setTextColor(0, 0, 0);
+    doc.text("Fornitore", 14, 30);
+    doc.setFont("helvetica", "bold");
+    doc.text("NovaFarm S.r.l", 14, 37);
+    doc.setFont("helvetica", "normal");
+    doc.text("Via delle Scienze 42, 10100 Turin (TO)", 14, 44);
+    doc.text("VAT number: 11223344556", 14, 51);
+    doc.text("SDI: ABC1234", 14, 58);
+    doc.text("PEC: novafarm@pec.it", 14, 65);
+
+    // Invoice Info (Right side)
+    doc.setFont("helvetica", "bold");
+
+    const formatted = formatCreatedAt(invoice.created_at);
+
+    doc.text(`Fattura N.:${invoice.invoice_no}`, 140, 20);
+    doc.text(`Data: ${formatted}`, 140, 28);
+
+    // Client Info
+    doc.setFontSize(14);
+    doc.text("Cliente", 140, 40);
+    doc.setFont("helvetica", "bold");
+    doc.text(`${invoice.customer_name}`, 140, 48);
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+
+    doc.text(`${invoice.address}`, 140, 55);
+    doc.text(`VAT number: ${invoice.vat}`, 140, 62);
+    doc.text(`SDI number: ${invoice.sdi}`, 140, 69);
+    doc.text(`PEC: ${invoice.personal_email}`, 140, 76);
+
+    // Services Table
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("Descrizione Servizi", 14, 85);
+    const head = [
+      ["Prodotto / Servizio", "Quantità", "Prezzo Unitario", "IVA", "Totale"],
+    ];
+
+    const body = [
+      [
+        invoice.plan_name,
+        invoice.quantity,
+        formatCurrencyItalian(invoice.amount_total),
+        invoice.tax_percentage + "%",
+        formatCurrencyItalian(priceAfterTax),
+      ],
+    ];
+
+    autoTable(doc, {
+      startY: 90,
+      head: head,
+      body: body,
+      theme: "grid",
+      styles: {
+        halign: "center",
+        valign: "middle",
+      },
+      columnStyles: {
+        0: { cellWidth: 60, halign: "left" },
+        1: { cellWidth: 30 },
+        2: { cellWidth: 30 },
+        3: { cellWidth: 30 },
+        4: { cellWidth: 30 },
+      },
+    });
+
+    //summary table
+    const summaryY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : 150;
+
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("Riepilogo", 14, summaryY);
+
+    autoTable(doc, {
+      startY: summaryY + 5,
+      body: [
+        ["Imponibile", formatCurrencyItalian(invoice.amount_total)],
+        [
+          "IVA " + invoice.tax_percentage + "%",
+          formatCurrencyItalian(
+            invoice.amount_total * (invoice.tax_percentage / 100)
+          ),
+        ],
+        ["Totale Fattura", formatCurrencyItalian(priceAfterTax)],
+      ],
+      theme: "grid",
+      styles: {
+        halign: "left",
+        valign: "middle",
+        fontStyle: "bold",
+      },
+      headStyles: {
+        fillColor: [255, 255, 255],
+        textColor: [0, 0, 0],
+        lineColor: [0, 0, 0],
+        lineWidth: 0.3,
+      },
+      columnStyles: {
+        0: { cellWidth: 100, halign: "left" },
+        1: { cellWidth: 60, halign: "right" },
+      },
+    });
+
+    const finalY = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(11);
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Pagamento:", 14, finalY);
+
+    let headingWidth = doc.getTextWidth("Pagamento: ") + 2;
+    doc.setFont("helvetica", "normal");
+    doc.text(
+      "Bonifico bancario – IBAN: IT99A0123412341234123412345 – Intesa Sanpaolo",
+      14 + headingWidth,
+      finalY
+    );
+
+    // Termini di pagamento
+    doc.setFont("helvetica", "bold");
+    doc.text("Termini di pagamento:", 14, finalY + 8);
+    headingWidth = doc.getTextWidth("Termini di pagamento: ") + 2;
+
+    doc.setFont("helvetica", "normal");
+    doc.text(
+      "Pagamento anticipato. Il servizio viene attivato solo a saldo ricevuto.",
+      14 + headingWidth,
+      finalY + 8,
+      { maxWidth: 170 }
+    );
+
+    // Ritardo nel pagamento
+    doc.setFont("helvetica", "bold");
+    doc.text("In caso di ritardo nel pagamento:", 14, finalY + 16);
+    headingWidth = doc.getTextWidth("In caso di ritardo nel pagamento: ") + 2;
+
+    doc.setFont("helvetica", "normal");
+    doc.text(
+      "saranno applicati gli interessi legali ai sensi del D.lgs. 231/2002.",
+      14 + headingWidth,
+      finalY + 16,
+      { maxWidth: 170 }
+    );
+
+    // Nota
+    doc.setFont("helvetica", "bold");
+    doc.text("Nota:", 14, finalY + 24);
+    headingWidth = doc.getTextWidth("Nota: ") + 2;
+
+    doc.setFont("helvetica", "normal");
+    doc.text(
+      "La presente è una copia della fattura elettronica inviata tramite Sistema di Interscambio (SDI). " +
+        "Il documento originale è consultabile accedendo con SPID al portale dell’Agenzia delle Entrate.",
+      14 + headingWidth,
+      finalY + 24,
+      { maxWidth: 170 }
+    );
+
+    // Stato della fattura
+    doc.setFont("helvetica", "bold");
+    doc.text("Stato della fattura:", 14, finalY + 36);
+    headingWidth = doc.getTextWidth("Stato della fattura: ") + 2;
+
+    doc.setFont("helvetica", "normal");
+    doc.text("Saldata", 14 + headingWidth, finalY + 36);
+
+    // Save
+    doc.save(`invoice-${invoice.invoice_no}.pdf`);
+  };
+
+  useEffect(() => {
+    const user_Id_2 = user.user_id;
+    fetchUserSubscription(user_Id_2);
+    fetchUserInvoices(user_Id_2);
+  }, []);
   const [formData, setFormData] = useState({
     legalOwnerFirstName: user.legalOwnerFirstName || "",
     legalOwnerLastName: user.legalOwnerLastName || "",
@@ -65,10 +308,13 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
     email: user.email || "",
     phone: user.phone || "",
     language: user.language || "",
-    address: user.address || "",
+    address: user.streetAddress || "",
   });
 
-  console.log("User detail ", formData);
+  console.log("Selected User: ", user);
+  const user_Id = user.user_id;
+
+  // console.log("Selected User in User DetailView: ", user_Id);
 
   const [showConfirmModal, setShowConfirmModal] = useState<{
     isOpen: boolean;
@@ -93,32 +339,28 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
   const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
   const [showChangePlanModal, setShowChangePlanModal] = useState(false);
 
-  // const handleSave = (section: string) => {
-  //   setEditingSection(null);
-  // };
-
   const handleSave = async (section: string) => {
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("users")
         .update({
           businessName: formData.businessName,
-          email: formData.email,
           phone: formData.phone,
           language: formData.language,
           streetAddress: formData.address,
         })
-        .eq("id", user.id);
+        .eq("user_id", user_Id)
+        .select();
 
-      if (error) {
-        console.error("Error updating user:", error.message);
-        toast.error("Error updating user");
-      } else {
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        onUserUpdated(data[0]);
         toast.success("Changes saved successfully!");
         setEditingSection(null);
       }
     } catch (err) {
-      console.error("Unexpected error:", err);
+      console.error(err);
       toast.error("Something went wrong");
     }
   };
@@ -213,17 +455,23 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
     });
   };
 
-  const mockInvoices = [
-    { id: "INV-001", date: "2024-01-15", amount: "€89.00", status: "paid" },
-    { id: "INV-002", date: "2023-12-15", amount: "€89.00", status: "paid" },
-    { id: "INV-003", date: "2023-11-15", amount: "€89.00", status: "paid" },
-  ];
+  const formatCurrencyItalian = (amount) => {
+    const formatted = new Intl.NumberFormat("it-IT", {
+      style: "currency",
+      currency: "EUR",
+    }).format(amount);
+
+    return formatted.replace("€", "").trim().replace(/^/, "€ ");
+  };
+
+  const formatCreatedAt = (iso?: string) =>
+    iso ? new Date(iso).toISOString().split("T")[0] : "";
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "active":
+      case "Active":
         return <Badge className="bg-green-100 text-green-800">Active</Badge>;
-      case "suspended":
+      case "Suspended":
         return <Badge className="bg-red-100 text-red-800">Suspended</Badge>;
       case "pending":
         return <Badge className="bg-yellow-100 text-yellow-800">Pending</Badge>;
@@ -252,17 +500,17 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
           <Button variant="ghost" onClick={onBack} className="p-2">
             <ArrowLeft className="w-4 h-4" />
           </Button>
-          <div>
+          <div className="text-left">
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
               {user.businessName}
             </h1>
-            <p className="text-gray-600 mt-1">
-              User ID: {user.id} • Created: {user.createdAt}
+            <p className="text-gray-600 mt-1 text-left">
+              User ID: {user.id} • Created: {formatCreatedAt(user.created_at)}
             </p>
           </div>
         </div>
         <div className="flex space-x-2 mt-4 sm:mt-0">
-          {getStatusBadge(user.status)}
+          {getStatusBadge(user.accountStatus ? "Active" : "Suspended")}
           {getPlanBadge(user.plan)}
         </div>
       </div>
@@ -286,11 +534,11 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
                 <Edit2 className="w-4 h-4" />
               </Button>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 text-left">
               {editingSection === "general" ? (
                 <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 ">
+                    <div className="text-left">
                       <Label htmlFor="businessName">Business Name</Label>
                       <Input
                         id="businessName"
@@ -308,6 +556,7 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
                       <Input
                         id="email"
                         type="email"
+                        readOnly
                         value={formData.email}
                         onChange={(e) =>
                           setFormData({ ...formData, email: e.target.value })
@@ -385,7 +634,7 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
                   </div>
                   <div className="md:col-span-2">
                     <Label className="text-gray-600">Address</Label>
-                    <p className="font-medium">{user.address}</p>
+                    <p className="font-medium">{user.streetAddress}</p>
                   </div>
                 </div>
               )}
@@ -408,7 +657,7 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
                 <Edit2 className="w-4 h-4" />
               </Button>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 text-left">
               {editingSection === "billing" ? (
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -613,7 +862,7 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
                 Active Subscription
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 text-left">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-gray-600">Current Plan</Label>
@@ -626,7 +875,7 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
                   <Label className="text-gray-600">Status</Label>
                   <div className="mt-1">
                     <Badge className="bg-green-100 text-green-800">
-                      Active
+                      {user?.accountStatus ? "Active" : "Suspended"}
                     </Badge>
                   </div>
                 </div>
@@ -634,7 +883,7 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
                   <Label className="text-gray-600">Next Billing Date</Label>
                   <p className="font-medium flex items-center">
                     <Calendar className="w-4 h-4 mr-1" />
-                    {user.nextBilling}
+                    {formatCreatedAt(subscriptionData?.current_period_end)}
                   </p>
                 </div>
                 <div>
@@ -652,24 +901,7 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
                   >
                     Change Plan
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-orange-600 hover:text-orange-700"
-                    onClick={() => openConfirmModal("cancel-subscription")}
-                  >
-                    Cancel Subscription
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openConfirmModal("resume-subscription")}
-                  >
-                    Resume Subscription
-                  </Button>
-                  <Button variant="outline" size="sm">
-                    Generate Payment Link
-                  </Button>
+
                   <Button variant="outline" size="sm">
                     Resend Last Invoice
                   </Button>
@@ -681,11 +913,13 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
           {/* Payment & Invoice History */}
           <Card>
             <CardHeader>
-              <CardTitle>Payment & Invoice History</CardTitle>
+              <CardTitle className="text-left">
+                Payment & Invoice History
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <Table>
-                <TableHeader>
+                <TableHeader className="text-left">
                   <TableRow>
                     <TableHead>Invoice ID</TableHead>
                     <TableHead>Date</TableHead>
@@ -695,21 +929,27 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {mockInvoices.map((invoice) => (
+                  {invoicesData.map((invoice) => (
                     <TableRow key={invoice.id}>
-                      <TableCell className="font-medium">
-                        {invoice.id}
+                      <TableCell className="font-medium text-left">
+                        {invoice.invoice_no}
                       </TableCell>
-                      <TableCell>{invoice.date}</TableCell>
-                      <TableCell>{invoice.amount}</TableCell>
-                      <TableCell>
-                        <Badge className="bg-green-100 text-green-800">
-                          {invoice.status}
-                        </Badge>
+                      <TableCell className="font-medium text-left">
+                        {formatCreatedAt(invoice.created_at)}
+                      </TableCell>
+                      <TableCell className="font-medium text-left">
+                        {formatCurrencyItalian(invoice.amount_total)}
+                      </TableCell>
+                      <TableCell className="font-medium text-left">
+                        {invoice.status}
                       </TableCell>
                       <TableCell>
                         <div className="flex space-x-2">
-                          <Button variant="ghost" size="sm">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => generateInvoice(invoice)}
+                          >
                             <Download className="w-4 h-4" />
                           </Button>
                           <Button variant="ghost" size="sm">
@@ -730,24 +970,30 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
           {/* Account Settings */}
           <Card>
             <CardHeader>
-              <CardTitle>Account Settings</CardTitle>
+              <CardTitle className="text-left">Account Settings</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 text-left">
               <div>
                 <Label className="text-gray-600">Status</Label>
-                <div className="mt-1">{getStatusBadge(user.accountStatus)}</div>
+                <div className="mt-1">
+                  {getStatusBadge(user?.accountStatus ? "Active" : "Suspended")}
+                </div>
               </div>
               <div>
                 <Label className="text-gray-600">Plan</Label>
-                <div className="mt-1">{getPlanBadge(user.plan)}</div>
+                <div className="mt-1">{getPlanBadge(user?.plan)}</div>
               </div>
               <div>
                 <Label className="text-gray-600">Subscription Start</Label>
-                <p className="font-medium">{user.subscriptionStart}</p>
+                <p className="font-medium">
+                  {formatCreatedAt(user?.created_at)}
+                </p>
               </div>
               <div>
                 <Label className="text-gray-600">Next Billing</Label>
-                <p className="font-medium">{user.nextBilling}</p>
+                <p className="font-medium">
+                  {formatCreatedAt(subscriptionData?.current_period_end)}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -755,20 +1001,24 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
           {/* Access History */}
           <Card>
             <CardHeader>
-              <CardTitle>Access History</CardTitle>
+              <CardTitle className="text-left">Access History</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 text-left">
               <div>
                 <Label className="text-gray-600">Last Login</Label>
-                <p className="font-medium">{user.lastLogin}</p>
+                <p className="font-medium">
+                  {formatCreatedAt(user?.last_login)}
+                </p>
               </div>
               <div>
                 <Label className="text-gray-600">Account Created</Label>
-                <p className="font-medium">{user.created_at}</p>
+                <p className="font-medium">
+                  {formatCreatedAt(user?.created_at)}
+                </p>
               </div>
               <div>
                 <Label className="text-gray-600">Location</Label>
-                <p className="font-medium">{user.location}</p>
+                <p className="font-medium">{user?.city}</p>
               </div>
             </CardContent>
           </Card>
@@ -776,7 +1026,7 @@ export const UserDetailView: React.FC<UserDetailViewProps> = ({
           {/* Actions */}
           <Card>
             <CardHeader>
-              <CardTitle>Actions</CardTitle>
+              <CardTitle className="text-left">Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <Button

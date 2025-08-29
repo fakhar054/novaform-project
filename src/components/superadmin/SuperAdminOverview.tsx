@@ -28,6 +28,7 @@ import {
 } from "recharts";
 import { SuperAdminSection } from "@/pages/SuperAdmin";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 type TimeFilter =
   | "last7"
@@ -50,61 +51,173 @@ const revenueData = [
   { month: "Jun", revenue: 13420, users: 267 },
 ];
 
+// const revenueData = [
+//   { month: "Jan", users: 145 },
+//   { month: "Feb", users: 167 },
+//   { month: "Mar", users: 189 },
+//   { month: "Apr", users: 201 },
+//   { month: "May", users: 234 },
+//   { month: "Jun", users: 267 },
+// ];
+
 export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
   onSectionChange,
 }) => {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("last30");
-  const [totalUsers, setTotalUsers] = useState<number | null>(null);
-
-  //fetching total users
-  const [loadingUsers, setLoadingUsers] = useState<boolean>(true);
-  useEffect(() => {
-    const fetchUserCount = async () => {
-      try {
-        const response = await fetch(
-          "https://ajbxscredobhqfksaqrk.supabase.co/functions/v1/dynamic-processor"
-        );
-        const data = await response.json();
-        setTotalUsers(data.totalUsers);
-      } catch (error) {
-        console.error("Failed to fetch user count:", error);
-      } finally {
-        setLoadingUsers(false);
-      }
-    };
-
-    fetchUserCount();
-  }, []);
-  // console.log("Total users", totalUsers);
+  const [totalUsers, setTotalUsers] = useState<number | null>([]);
 
   //fetching active and suspended
   const [activeCount, setActiveCount] = useState(0);
   const [suspendedCount, setSuspendedCount] = useState(0);
+  const [allUsersData, setAllUsersData] = useState([]);
+  const [subscription, setSubscriptions] = useState([]);
+  const [totalAmount, setTotalAmount] = useState();
+  const [monthlyAmount, setMonthlyAmount] = useState();
+  const [newUsers, setNewUsers] = useState();
+  const [chartData, setChartData] = useState([]);
+  const [userChartdata, setUserChartData] = useState([]);
+  //fetching total users
+  const [loadingUsers, setLoadingUsers] = useState<boolean>(true);
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      const { data, error } = await supabase
-        .from("users")
-        .select("accountStatus");
-
+    const fetchUsersData = async () => {
+      setLoadingUsers(true);
+      const { data, error } = await supabase.from("users").select("*");
       if (error) {
-        console.error("Error fetching users:", error.message);
+        toast.error("Error While Fetching data");
+        setLoadingUsers(false);
         return;
       }
-      let active = 0;
-      let suspended = 0;
-      data.forEach((user) => {
-        if (user.accountStatus === "active") active++;
-        else if (user.accountStatus === "suspended") suspended++;
-      });
-      setActiveCount(active);
-      setSuspendedCount(suspended);
-    };
-    fetchUsers();
-  }, []);
+      if (data) {
+        setTotalUsers(data);
+        const active_users = data.filter((user) => user.accountStatus === true);
+        const suspended_user = data.filter(
+          (user) => user.accountStatus === false
+        );
+        setActiveCount(active_users.length);
+        setSuspendedCount(suspended_user.length);
 
-  // console.log("acitve user are", activeCount);
-  // console.log("suspended user are", suspendedCount);
+        const now = new Date();
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+        const usersThisMonth = data.filter((user) => {
+          const createdDate = new Date(user.created_at);
+          return createdDate >= firstDay && createdDate <= lastDay;
+        });
+        setNewUsers(usersThisMonth.length);
+
+        const now_user = new Date();
+        const months = [];
+
+        // prepare last 6 months
+        for (let i = 5; i >= 0; i--) {
+          const d = new Date(
+            now_user.getFullYear(),
+            now_user.getMonth() - i,
+            1
+          );
+          months.push({
+            month: d.toLocaleString("default", { month: "short" }),
+            year: d.getFullYear(),
+            count: 0,
+          });
+        }
+        data.forEach((user) => {
+          const createdAt = new Date(user.created_at);
+          months.forEach((m) => {
+            if (
+              createdAt.getMonth() ===
+                new Date(
+                  m.year,
+                  now_user.getMonth() - (5 - months.indexOf(m)),
+                  1
+                ).getMonth() &&
+              createdAt.getFullYear() === m.year
+            ) {
+              m.count += 1;
+            }
+          });
+        });
+        setUserChartData(months);
+
+        console.log("User registrations in last 6 months:", months);
+      }
+    };
+
+    const fetchSubscriptions = async () => {
+      setLoadingUsers(true);
+      const { data, error } = await supabase.from("subscription").select("*");
+
+      if (error) {
+        toast.error("Error while fetching subscriptions");
+        console.error("Subscription fetch error:", error.message);
+        setLoadingUsers(true);
+        return;
+      }
+
+      if (data) {
+        console.log("Subscriptions:", data);
+        setSubscriptions(data);
+
+        const total_revenue = data.reduce((sum, sub) => {
+          return sum + (sub.amount_paid || 0);
+        }, 0);
+        setTotalAmount(total_revenue);
+        //for month
+        const now = new Date();
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+        const monthlyRevenue = data
+          .filter((sub) => {
+            const createdDate = new Date(sub.created_at);
+            return createdDate >= firstDay && createdDate <= lastDay;
+          })
+          .reduce((sum, sub) => sum + (sub.amount_paid || 0), 0);
+        setMonthlyAmount(monthlyRevenue);
+
+        // code for six month graph
+        const now_2 = new Date();
+        const formatMonth = (date) =>
+          `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+            2,
+            "0"
+          )}`;
+
+        const grouped = {};
+
+        data.forEach((sub) => {
+          const date = new Date(sub.created_at);
+          const monthKey = formatMonth(date);
+
+          if (!grouped[monthKey]) {
+            grouped[monthKey] = 0;
+          }
+          grouped[monthKey] += sub.amount_paid || 0;
+        });
+
+        const revenueData = [];
+        for (let i = 5; i >= 0; i--) {
+          const d = new Date(now_2.getFullYear(), now_2.getMonth() - i, 1);
+          const key = formatMonth(d);
+
+          revenueData.push({
+            month: key,
+            revenue: grouped[key] || 0,
+          });
+        }
+
+        console.log("Revenue data : ", revenueData);
+        setChartData(revenueData);
+
+        setLoadingUsers(false);
+      }
+    };
+
+    fetchUsersData();
+    fetchSubscriptions();
+  }, []);
 
   const kpiData = {
     totalUsers: { value: 1247, change: 12.4, trend: "up" },
@@ -115,24 +228,24 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
     newSignups: { value: 87, change: -8.1, trend: "down" },
   };
 
-  const getTimeFilterLabel = (filter: TimeFilter) => {
-    switch (filter) {
-      case "last7":
-        return "Last 7 days";
-      case "last30":
-        return "Last 30 days";
-      case "last90":
-        return "Last 90 days";
-      case "prev30":
-        return "Previous 30 days";
-      case "prev90":
-        return "Previous 90 days";
-      case "custom":
-        return "Custom range";
-      default:
-        return "Last 30 days";
-    }
-  };
+  // const getTimeFilterLabel = (filter: TimeFilter) => {
+  //   switch (filter) {
+  //     case "last7":
+  //       return "Last 7 days";
+  //     case "last30":
+  //       return "Last 30 days";
+  //     case "last90":
+  //       return "Last 90 days";
+  //     case "prev30":
+  //       return "Previous 30 days";
+  //     case "prev90":
+  //       return "Previous 90 days";
+  //     case "custom":
+  //       return "Custom range";
+  //     default:
+  //       return "Last 30 days";
+  //   }
+  // };
 
   const handleQuickAction = (action: string) => {
     switch (action) {
@@ -234,12 +347,11 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
         <KPICard
           title="Total Users"
-          value={totalUsers}
-          // value={kpiData.totalUsers.value}
-          change={kpiData.totalUsers.change}
+          value={totalUsers.length}
+          // change={kpiData.totalUsers.change}
           trend={kpiData.totalUsers.trend}
           icon={Users}
         />
@@ -261,7 +373,7 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
         />
         <KPICard
           title="Monthly Revenue (MRR)"
-          value={kpiData.mrr.value}
+          value={monthlyAmount}
           prefix="€"
           change={kpiData.mrr.change}
           trend={kpiData.mrr.trend}
@@ -269,7 +381,7 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
         />
         <KPICard
           title="Total Revenue"
-          value={kpiData.totalRevenue.value}
+          value={totalAmount}
           prefix="€"
           change={kpiData.totalRevenue.change}
           trend={kpiData.totalRevenue.trend}
@@ -277,7 +389,7 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
         />
         <KPICard
           title="New Signups"
-          value={kpiData.newSignups.value}
+          value={newUsers}
           change={kpiData.newSignups.change}
           trend={kpiData.newSignups.trend}
           icon={TrendingUp}
@@ -285,7 +397,7 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-left">
         <Card className="bg-white border border-gray-200">
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-gray-900">
@@ -297,7 +409,7 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={revenueData}>
+              <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="month" stroke="#6b7280" />
                 <YAxis stroke="#6b7280" />
@@ -329,7 +441,7 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={revenueData}>
+              <BarChart data={userChartdata}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="month" stroke="#6b7280" />
                 <YAxis stroke="#6b7280" />
@@ -340,7 +452,7 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
                     borderRadius: "8px",
                   }}
                 />
-                <Bar dataKey="users" fill="#1C9B7A" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="count" fill="#1C9B7A" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -348,7 +460,7 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
       </div>
 
       {/* Quick Actions */}
-      <Card className="bg-white border border-gray-200">
+      <Card className="bg-white border border-gray-200 text-left">
         <CardHeader>
           <CardTitle className="text-lg font-semibold text-gray-900">
             Quick Actions

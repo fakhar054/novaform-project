@@ -9,6 +9,8 @@ export const DashboardOverview: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [businessName, setBusinessName] = useState();
   const [profileChange, setProfileChange] = useState();
+  const [updateDate, setUpdateDate] = useState();
+  const [profileData, setProfileData] = useState();
 
   const navigate = useNavigate();
 
@@ -119,6 +121,7 @@ export const DashboardOverview: React.FC = () => {
   };
 
   useEffect(() => {
+    // console.log("i am runnning");
     const fetchProfileByUserId = async () => {
       const {
         data: { user },
@@ -128,21 +131,22 @@ export const DashboardOverview: React.FC = () => {
 
       const { data, error } = await supabase
         .from("profile_Update")
-        .select("changed_col")
+        .select("*")
         .eq("user_id", user_Id)
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error("Error fetching profile:", error.message);
         return null;
       }
 
-      console.log("Fetched profile:", data);
-      setProfileChange(data.changed_col);
+      console.log("Fetched profile Table:", data);
+      setProfileChange(data?.changed_col);
+      setProfileData(data);
       return data;
     };
     fetchProfileByUserId();
-  });
+  }, []);
 
   const formatCurrencyItalian = (amount) => {
     const formatted = new Intl.NumberFormat("it-IT", {
@@ -153,6 +157,24 @@ export const DashboardOverview: React.FC = () => {
     // Force symbol in front
     return formatted.replace("€", "").trim().replace(/^/, "€ ");
   };
+
+  function subtractDatesInDays(date) {
+    if (!date) {
+      return "";
+    }
+    const today = new Date();
+    const givenDate = new Date(date);
+
+    today.setHours(0, 0, 0, 0);
+    givenDate.setHours(0, 0, 0, 0);
+
+    const diffMs = givenDate - today;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return "Today";
+    if (diffDays > 0) return diffDays + " day(s) remaining";
+    return Math.abs(diffDays) + " day(s) ago";
+  }
 
   if (loading) {
     return <Spinner />;
@@ -281,7 +303,19 @@ export const DashboardOverview: React.FC = () => {
               </p>
               <p className="text-sm text-gray-600">{profileChange}</p>
             </div>
-            <span className="text-sm text-gray-500">1 week ago</span>
+            <span className="text-sm text-gray-500">
+              {subtractDatesInDays(profileData?.password_date)}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between py-3 border-b last:border-b-0">
+            <div>
+              <p className="font-medium text-black text-left">Email Updated</p>
+              <p className="text-sm text-gray-600 text-left">Email Changed</p>
+            </div>
+            <span className="text-sm text-gray-500">
+              {subtractDatesInDays(profileData?.email_date)}
+            </span>
           </div>
         </div>
       </div>

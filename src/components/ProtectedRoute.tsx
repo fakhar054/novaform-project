@@ -105,7 +105,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     };
 
     checkUser();
-  }, [role]); // depend on role
+  }, [role]);
 
   if (loading) {
     return <Spinner />;

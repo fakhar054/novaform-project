@@ -35,12 +35,12 @@ export default function InvoiceDetail() {
         console.log("Error fetching invoice:", error);
       } else {
         setInvoicesData(data);
-        const price = data.amount_total;
-        const total_tax = data.tax_percentage;
-        setFinal_tax(total_tax * price);
-        const total = price + price * total_tax;
+        const price = data?.amount_total;
+        const newTax = data?.tax_percentage / 100; //0.22
+        const total_tax = price * newTax;
+        setFinal_tax(total_tax);
+        const total = price + total_tax;
         setTotal(total);
-        console.log("After adding tax,", total);
 
         console.log(data);
         const formatted = new Date(data.created_at).toLocaleDateString(
@@ -58,6 +58,19 @@ export default function InvoiceDetail() {
 
     fetchInvoice();
   }, [invoice_Id]);
+
+  const formatCurrencyItalian = (amount) => {
+    const formatted = new Intl.NumberFormat("it-IT", {
+      style: "currency",
+      currency: "EUR",
+    }).format(amount);
+
+    return formatted.replace("€", "").trim().replace(/^/, "€ ");
+  };
+
+  if (loading) {
+    return <Spinner />;
+  }
 
   return (
     <div className="bg-[#F6F8FA] w-[100%] h-[100%] p-6">
@@ -107,29 +120,7 @@ export default function InvoiceDetail() {
         </div>
         <div className="table-start mt-8">
           <h1 className="text-2xl font-semibold mb-1">Descrizione Servizi </h1>
-          {/* <table className="w-full border border-collapse table-fixed">
-            <thead>
-              <tr className="bg-[#DEF6E7]">
-                <th className="py-3 px-2 border w-3/5">Product / Service</th>
-                <th className="py-3 px-2 border w-1/10">Amount</th>
-                <th className="py-3 px-2 border w-1/10">Unit price </th>
-                <th className="py-3 px-2 border w-1/10">VAT</th>
-                <th className="py-3 px-2 border w-1/10"> Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="border w-3/5">
-                  NovaFarm Monthly Subscription (Pharmacy Management Software)
-                  Period: 01/07/2025 – 31/07/2025
-                </td>
-                <td className="border w-1/10">1</td>
-                <td className="border w-1/10">€797.00</td>
-                <td className="border w-1/10">22%</td>
-                <td className="border w-1/10">€972.34</td>
-              </tr>
-            </tbody>
-          </table> */}
+
           <table className="w-full border border-collapse table-fixed">
             <thead>
               <tr className="bg-[#DEF6E7]">
@@ -159,7 +150,7 @@ export default function InvoiceDetail() {
                   style={{ width: "16.66%" }}
                 >
                   {/* VAT */}
-                  Prezzo Unitario
+                  IVA
                 </th>
                 <th
                   className="border px-2 py-3 text-left"
@@ -175,12 +166,14 @@ export default function InvoiceDetail() {
                 <td className="border px-2 py-3">{invoicesData?.plan_name}</td>
                 <td className="border px-2 py-3">{invoicesData?.quantity}</td>
                 <td className="border px-2 py-3">
-                  {invoicesData.amount_total}
+                  {formatCurrencyItalian(invoicesData?.amount_total)}
                 </td>
                 <td className="border px-2 py-3">
-                  {invoicesData.tax_percentage * 100}%
+                  {invoicesData?.tax_percentage}%
                 </td>
-                <td className="border px-2 py-3">€{total}</td>
+                <td className="border px-2 py-3">
+                  {formatCurrencyItalian(total)}
+                </td>
               </tr>
             </tbody>
           </table>
@@ -191,14 +184,16 @@ export default function InvoiceDetail() {
               <tr>
                 <td className="border py-3 px-2">Imponibile </td>
                 <td className="border py-3 px-3 text-right">
-                  {invoicesData.amount_total}
+                  {formatCurrencyItalian(invoicesData.amount_total)}
                 </td>
               </tr>
               <tr>
                 <td className="border py-3 px-2">
-                  {invoicesData.tax_percentage * 100}%
+                  {invoicesData.tax_percentage}%
                 </td>
-                <td className="border py-3 px-3 text-right">€{final_tax}</td>
+                <td className="border py-3 px-3 text-right">
+                  {formatCurrencyItalian(final_tax)}
+                </td>
               </tr>
               <tr>
                 <td className="border py-3 px-2 font-semibold">
@@ -206,7 +201,7 @@ export default function InvoiceDetail() {
                   Totale Fattura
                 </td>
                 <td className="border py-3 px-3 text-right font-semibold">
-                  €{total}
+                  {formatCurrencyItalian(total)}
                 </td>
               </tr>
             </thead>
