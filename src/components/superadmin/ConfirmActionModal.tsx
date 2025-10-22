@@ -29,12 +29,11 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
   confirmButtonText = "Confirm",
   isDestructive = false,
 }) => {
-  console.log("Confirm box opened: ");
   return (
     <AlertDialog open={isOpen} onOpenChange={onCancel}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{title} +123</AlertDialogTitle>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{message} </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

@@ -37,10 +37,11 @@ export const ChangePlanModal: React.FC<ChangePlanModalProps> = ({
 }) => {
   const [selectedPlan, setSelectedPlan] = useState(user.plan);
   const [latestPlan, setLatestPlan] = useState(user.plan);
-  const [billingCycle, setBillingCycle] = useState("");
+  const [billingCycle, setBillingCycle] = useState("monthly");
   const [AllPlans, setAllPlans] = useState([]);
 
   const [newPlan, setNewPlan] = useState();
+  // console.log("User details : ", user?.user_id);
 
   console.log("Billing Cycle is : ", billingCycle);
 
@@ -78,10 +79,198 @@ export const ChangePlanModal: React.FC<ChangePlanModalProps> = ({
   console.log("ALl plans", AllPlans);
   const handleSave = async () => {
     console.log("Clicked save button");
+    updatePlanInSupabase(user?.user_id);
+    updatePlanInUser(user?.user_id);
+    onClose();
   };
+
+  function getLocalCreatedAt(): string {
+    const date = new Date();
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    const seconds = String(date.getSeconds()).padStart(2, "0");
+
+    const millis = String(date.getMilliseconds()).padStart(3, "0") + "000";
+
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${millis}+00`;
+  }
 
   const getCurrentPlan = () => AllPlans.find((p) => p.id === latestPlan);
   const getSelectedPlan = () => AllPlans.find((p) => p.id === selectedPlan);
+
+  function addOneMonth(createdAt: string): string {
+    const [datePart, timePart] = createdAt.split(" ");
+    const isoString = datePart + "T" + timePart.replace("+00", "Z");
+    const date = new Date(isoString);
+
+    date.setMonth(date.getMonth() + 1);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    const seconds = String(date.getSeconds()).padStart(2, "0");
+    const millis = String(date.getMilliseconds()).padStart(3, "0") + "000"; // 6 digits
+
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${millis}+00`;
+  }
+
+  function addOneYear(createdAt) {
+    const date = new Date(createdAt);
+    date.setFullYear(date.getFullYear() + 1);
+
+    const formatted =
+      date.getFullYear() +
+      "-" +
+      String(date.getMonth() + 1).padStart(2, "0") +
+      "-" +
+      String(date.getDate()).padStart(2, "0") +
+      " " +
+      String(date.getHours()).padStart(2, "0") +
+      ":" +
+      String(date.getMinutes()).padStart(2, "0") +
+      ":" +
+      String(date.getSeconds()).padStart(2, "0") +
+      "." +
+      String(date.getMilliseconds()).padEnd(6, "0") +
+      "+00";
+
+    return formatted;
+  }
+
+  //this code not working
+  // const updatePlanInSupabase = async (userId) => {
+  //   console.log("User id while updating plan: ", userId);
+  //   const plan = getSelectedPlan();
+  //   if (!plan) {
+  //     toast.error("No plan selected");
+  //     return;
+  //   }
+
+  //   const createdAt = getLocalCreatedAt();
+  //   const currentPeriodEnd =
+  //     billingCycle === "monthly"
+  //       ? addOneMonth(createdAt)
+  //       : addOneYear(createdAt);
+
+  //   console.log("Created at: ", createdAt);
+  //   console.log("Current Period End: ", currentPeriodEnd);
+
+  //   try {
+  //     const { data, error } = await supabase
+  //       .from("subscription")
+  //       .update({
+  //         plan_name: "updated Plan",
+  //         // created_at: createdAt,
+  //         // current_period_end: currentPeriodEnd,
+  //         // plan_name: plan.plan_name,
+  //         // amount_paid:
+  //         //   billingCycle === "monthly" ? plan.price_monthly : plan.price_yearly,
+  //         // plan_id: plan.plan_product_id,
+  //         // currency: plan.currency || "EUR",
+  //       })
+  //       .eq("user_id", userId)
+  //       .single();
+  //     console.log("Data after update:", data);
+  //     if (error) {
+  //       console.error("Error updating plan:", error);
+  //       toast.error("Failed to update");
+  //     } else {
+  //       console.log("Plan updated successfully:", data);
+  //       toast.success("Plan updated Successfully");
+  //     }
+  //   } catch (err) {
+  //     console.error("Unexpected error:", err);
+  //     toast.error("Unexpected error occurred");
+  //   }
+  // };
+
+  const updatePlanInSupabase = async (userId: string) => {
+    if (!userId) {
+      toast.error("Missing user id");
+      return;
+    }
+    const plan = getSelectedPlan();
+    console.log("select plan inforation: ", plan);
+    if (!plan) {
+      toast.error("No plan selected");
+      return;
+    }
+
+    const createdAt = getLocalCreatedAt();
+    const currentPeriodEnd =
+      billingCycle === "monthly"
+        ? addOneMonth(createdAt)
+        : addOneYear(createdAt);
+
+    try {
+      const { data, error } = await supabase
+        .from("subscription")
+        .update({
+          plan_name: newPlan?.plan_name,
+          created_at: createdAt,
+          current_period_end: currentPeriodEnd,
+          amount_paid:
+            billingCycle === "monthly" ? plan.price_monthly : plan.price_yearly,
+          plan_id: plan.plan_product_id,
+        })
+        .eq("user_id", userId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error upserting plan:", error);
+        toast.error(error.message || "Failed to update");
+        return;
+      }
+
+      console.log("Plan updated successfully:", data);
+      toast.success("Plan updated successfully");
+    } catch (err: any) {
+      console.error("Unexpected error:", err);
+      toast.error(err?.message || "Unexpected error occurred");
+    }
+  };
+
+  const updatePlanInUser = async (userId: string) => {
+    if (!userId) {
+      toast.error("Missing user id");
+      return;
+    }
+    const plan = getSelectedPlan();
+    console.log("select plan inforation: ", plan);
+    if (!plan) {
+      toast.error("No plan selected");
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .update({
+          plan: newPlan?.plan_name,
+        })
+        .eq("user_id", userId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error upserting plan:", error);
+        toast.error(error.message || "Failed to update");
+        return;
+      }
+
+      // console.log("Plan updated successfully in user table:", data);
+      // toast.success("Plan updated successfully in user table");
+    } catch (err: any) {
+      console.error("Unexpected error:", err);
+      toast.error(err?.message || "Unexpected error occurred");
+    }
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -115,7 +304,13 @@ export const ChangePlanModal: React.FC<ChangePlanModalProps> = ({
               value={selectedPlan}
               onValueChange={(value) => {
                 setSelectedPlan(value);
-                console.log("Selected plan:", value);
+                // console.log("Selected plan is:", value);
+                const chosenPlan = AllPlans.find((p) => p.id === value);
+                console.log("Selected plan id:", value);
+                console.log("Full plan object:", chosenPlan);
+                if (chosenPlan) {
+                  setNewPlan(chosenPlan);
+                }
 
                 if (onPlanChange) onPlanChange(value);
               }}

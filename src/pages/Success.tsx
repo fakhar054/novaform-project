@@ -23,6 +23,7 @@ export default function Success() {
   const [planDuration, setPlanDuration] = useState();
   const [invoiceSaved, setInvoiceSaved] = useState(false);
   const [inoviceData, setInvoiceData] = useState();
+  const [selectedSubscription, setSelectedSubscription] = useState();
 
   function generateInvoiceNo() {
     const year = new Date().getFullYear();
@@ -44,6 +45,43 @@ export default function Success() {
   };
   let duration = null;
 
+  const fetchUserSubscription = async (userId) => {
+    const { data, error } = await supabase
+      .from("subscription")
+      .select("*")
+      .eq("user_id", userId)
+      .single();
+
+    if (error) {
+      console.error("Error fetching subscription:", error);
+    } else {
+      console.log("User subscription:", data);
+      setSelectedSubscription(data);
+      return data;
+    }
+  };
+
+  const saveSubscriptionHistory = async (userId, subscription) => {
+    console.log("User id: ", userId);
+    const { data, error } = await supabase.from("subscriptionHistory").upsert(
+      [
+        {
+          user_id: userId,
+          pervious_plan_name: subscription?.plan_name,
+          pervious_plan_price: subscription?.amount_paid,
+          pervious_plan_end_date: subscription?.current_period_end,
+        },
+      ],
+      { onConflict: "user_id" }
+    );
+
+    if (error) {
+      console.error("Error saving subscription history:", error);
+    } else {
+      console.log("Subscription history saved:", data);
+    }
+  };
+
   useEffect(() => {
     const invoiceNo = generateInvoiceNo();
     const fetchSessionData = async () => {
@@ -54,10 +92,11 @@ export default function Success() {
 
         const accessToken = session?.access_token;
         const userId = session?.user?.id;
-
-        // console.log("Access Token:", accessToken);
-        // console.log("Session ID:", sessionId);
-        // console.log("User UUID:", userId);
+        // fetchUserSubscription(userId);
+        const subscription = await fetchUserSubscription(userId);
+        if (subscription) {
+          await saveSubscriptionHistory(userId, subscription);
+        }
 
         if (!sessionId || !accessToken || !userId) {
           console.error("Missing sessionId, accessToken, or userId");
@@ -146,7 +185,7 @@ export default function Success() {
               sdi: userInfo.sdi_code,
               // session_id: data.session.id,
               amount_total: data.session.amount_total / 100,
-              status: "paid",
+              status: true,
               invoice_no: invoiceNo,
               plan_name: planData.plan_name,
               duration: duration,
@@ -261,17 +300,6 @@ export default function Success() {
   }
 
   return (
-    // <div className="p-4">
-    //   <h1>Payment Successful</h1>
-    //   {loading ? (
-    //     <p>Loading session info...</p>
-    //   ) : sessionData ? (
-    //     <pre>{JSON.stringify(sessionData, null, 2)}</pre>
-    //   ) : (
-    //     <p>Failed to load session data.</p>
-    //   )}
-    // </div>
-
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-16">
         <div className="max-w-2xl mx-auto text-center space-y-8">

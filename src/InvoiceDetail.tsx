@@ -28,8 +28,9 @@ export default function InvoiceDetail() {
         .from("invoices")
         .select("*")
         .eq("id", invoice_Id)
-        .eq("user_id", user.id)
-        .single();
+        // .eq("user_id", user.id)
+        .maybeSingle();
+      // .single();
 
       if (error) {
         console.log("Error fetching invoice:", error);
@@ -43,7 +44,7 @@ export default function InvoiceDetail() {
         setTotal(total);
 
         console.log(data);
-        const formatted = new Date(data.created_at).toLocaleDateString(
+        const formatted = new Date(data?.created_at).toLocaleDateString(
           "en-US",
           {
             year: "numeric",

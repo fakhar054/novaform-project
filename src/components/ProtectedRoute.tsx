@@ -12,6 +12,7 @@
 //   const [isAuthenticated, setIsAuthenticated] = useState(false);
 //   const [role, setRole] = useState<string | null>(null);
 
+//   // 🔹 First effect: wait 2s then load role
 //   useEffect(() => {
 //     const timer = setTimeout(() => {
 //       const storedRole = localStorage.getItem("role");
@@ -24,18 +25,14 @@
 
 //   useEffect(() => {
 //     const checkUser = async () => {
+//       if (!role) return;
+
 //       const {
 //         data: { session },
 //         error,
 //       } = await supabase.auth.getSession();
 
-//       // const role = localStorage.getItem("role");
-
-//       if (!role) {
-//         console.log("loading");
-//       }
-
-//       console.log("role is from protected route : ", role);
+//       console.log("role from state in protected route:", role);
 
 //       if (session && !error && role === "user") {
 //         setIsAuthenticated(true);
@@ -58,6 +55,7 @@
 
 // export default ProtectedRoute;
 
+/////////////
 import { ReactNode, useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -70,48 +68,53 @@ interface ProtectedRouteProps {
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [role, setRole] = useState<string | null>(null);
 
-  // 🔹 First effect: wait 2s then load role
   useEffect(() => {
-    const timer = setTimeout(() => {
-      const storedRole = localStorage.getItem("role");
-      setRole(storedRole);
-      console.log("First useEffect finished, role set:", storedRole);
-    }, 2000);
+    const checkAuth = async () => {
+      try {
+        const storedRole = localStorage.getItem("role");
+        const { data, error } = await supabase.auth.getSession();
 
-    return () => clearTimeout(timer);
-  }, []);
+        const session = data?.session;
+        console.log("Stored Role:", storedRole);
+        console.log("Supabase Session:", session);
 
-  // 🔹 Second effect: only runs AFTER role is set
-  useEffect(() => {
-    const checkUser = async () => {
-      if (!role) return; // wait until role is set
-
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
-
-      console.log("role from state in protected route:", role);
-
-      if (session && !error && role === "user") {
-        setIsAuthenticated(true);
-      } else {
+        // check: must have session + correct role
+        if (session && storedRole === "user" && !error) {
+          setIsAuthenticated(true);
+        } else {
+          setIsAuthenticated(false);
+        }
+      } catch (err) {
+        console.error("Error checking auth:", err);
         setIsAuthenticated(false);
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     };
 
-    checkUser();
-  }, [role]);
+    checkAuth();
 
-  if (loading) {
-    return <Spinner />;
+    // Listen for login/logout changes
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      checkAuth();
+    });
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  if (loading) return <Spinner />;
+
+  // Redirect if not authenticated
+  if (!isAuthenticated) {
+    console.log("❌ Not authenticated → redirecting to /");
+    return <Navigate to="/" replace />;
   }
 
-  return isAuthenticated ? <>{children}</> : <Navigate to="/" replace />;
+  // If authenticated, show child route
+  return <>{children}</>;
 };
 
 export default ProtectedRoute;

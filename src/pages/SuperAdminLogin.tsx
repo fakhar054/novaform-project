@@ -524,7 +524,7 @@ const SuperAdminLogin = () => {
             </div>
 
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
+              {/* <div className="flex items-center space-x-2">
                 <Checkbox
                   id="remember"
                   checked={rememberMe}
@@ -535,7 +535,7 @@ const SuperAdminLogin = () => {
                 <Label htmlFor="remember" className="text-sm text-gray-600">
                   Remember me for 60 days
                 </Label>
-              </div>
+              </div> */}
               <button
                 type="button"
                 onClick={() => setShowForgotPassword(true)}

@@ -30,19 +30,32 @@ export const SubscriptionBilling: React.FC = () => {
 
   const [plan, setPlan] = useState();
   const [selectedPlanId, setSelectedPlanId] = useState();
+  const [selectedPlanPrice, setSelectedPlanPrice] = useState();
+  const [tags, setTags] = useState("");
+  const [planInfo, setPlanInfo] = useState();
+
+  const [selectedSubscription, setSelectedSubscription] = useState();
 
   const fetchPlans = async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("subscription_plan")
       .select("*");
-    // .eq("status", true); // Only active plans
 
     if (error) {
       console.error("Error fetching plans:", error.message);
     } else {
-      // console.log("All plans coming from subscription_plan: ", data);
+      console.log("All plans coming from subscription_plan: ", data);
+      const planFound = data.find(
+        (plan) =>
+          plan.stripe_price_monthly_id === selectedPlanId ||
+          plan.stripe_price_yearly_id === selectedPlanId
+      );
+
+      setPlanInfo(planFound);
+      console.log("Found plan: ", planFound);
       setAllPlans(data);
+
       const monthly = [];
       const yearly = [];
       data.forEach((plan) => {
@@ -55,6 +68,7 @@ export const SubscriptionBilling: React.FC = () => {
             stripePriceId: plan.stripe_price_monthly_id,
             features: plan.tags ? plan.tags.split(",") : [],
             currency: plan.currency || "EUR",
+            tags: plan?.tags,
           });
         }
         if (plan.price_yearly && plan.stripe_price_yearly_id) {
@@ -66,6 +80,7 @@ export const SubscriptionBilling: React.FC = () => {
             stripePriceId: plan.stripe_price_yearly_id,
             features: plan.tags ? plan.tags.split(",") : [],
             currency: plan.currency || "EUR",
+            tags: plan?.tags,
           });
         }
       });
@@ -79,10 +94,35 @@ export const SubscriptionBilling: React.FC = () => {
 
   useEffect(() => {
     fetchPlans();
-  }, []);
+    if (selectedPlanId) {
+      fetchPlans();
+    }
+  }, [selectedPlanId]);
 
   console.log("Monthly Plans:", monthlyPlans);
   console.log("Yearly Plans:", yearlyPlans);
+
+  const saveSubscriptionHistory = async (userId) => {
+    console.log("User id: ", userId);
+
+    const { data, error } = await supabase.from("subscriptionHistory").upsert(
+      [
+        {
+          user_id: userId,
+          pervious_plan_name: selectedSubscription.plan_name,
+          pervious_plan_price: selectedSubscription.amount_paid,
+          pervious_plan_end_date: selectedSubscription.current_period_end,
+        },
+      ],
+      { onConflict: "user_id" }
+    );
+
+    if (error) {
+      console.error("Error saving subscription history:", error);
+    } else {
+      console.log("Subscription history saved:", data);
+    }
+  };
 
   async function handleCheckout(priceId) {
     console.log("Price Id", priceId);
@@ -95,6 +135,7 @@ export const SubscriptionBilling: React.FC = () => {
       data: { session },
     } = await supabase.auth.getSession();
 
+    // saveSubscriptionHistory(user.id);
     const res = await fetch(
       "https://ajbxscredobhqfksaqrk.supabase.co/functions/v1/checkout-fun",
       {
@@ -155,9 +196,13 @@ export const SubscriptionBilling: React.FC = () => {
       if (error) {
         console.error("Error fetching plan:", error.message);
       } else {
+        console.log("Selectd Subscription : ", data);
+        setSelectedSubscription(data);
+
         console.log("Selectd Subscription id: ", data?.selected_plan_id);
         setPlan(data);
         setSelectedPlanId(data?.selected_plan_id);
+        setSelectedPlanPrice(data?.amount_paid);
         setLoading(false);
       }
     };
@@ -184,7 +229,7 @@ export const SubscriptionBilling: React.FC = () => {
     const diffMs = end.getTime() - start.getTime();
     const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
     // console.log("diffDays (UTC):", diffDays);
-    return diffDays > 30 ? "Annual Billing" : "Monthly Billing";
+    return diffDays > 32 ? "Annual Billing" : "Monthly Billing";
   };
 
   const formatCurrencyItalian = (amount) => {
@@ -241,13 +286,16 @@ export const SubscriptionBilling: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {currentPlan.features.map((feature, index) => (
-              <div key={index} className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-[#078147] rounded-full"></div>
-                <span className="text-sm text-gray-700">{feature}</span>
-              </div>
-            ))}
+          <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
+            <div className="flex items-center space-x-2">
+              {/* <div className="w-2 h-2 bg-[#078147] rounded-full"></div> */}
+              <span className="text-sm text-gray-700">
+                <div
+                  className="prose featurs-list px-6 text-sm text-gray-700"
+                  dangerouslySetInnerHTML={{ __html: planInfo?.tags }}
+                />
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -278,9 +326,9 @@ export const SubscriptionBilling: React.FC = () => {
             }`}
           >
             Annual
-            <span className="ml-1 text-xs bg-[#078147] text-white px-1.5 py-0.5 rounded">
+            {/* <span className="ml-1 text-xs bg-[#078147] text-white px-1.5 py-0.5 rounded">
               Save 17%
-            </span>
+            </span> */}
           </button>
         </div>
       </div>
@@ -307,22 +355,26 @@ export const SubscriptionBilling: React.FC = () => {
                 <p className="text-2xl font-bold mb-2 text-[#078147]">
                   {formatCurrencyItalian(yearPlan.price)} / Year
                 </p>
-
                 <div
-                  className="text-sm text-gray-800"
-                  dangerouslySetInnerHTML={{
-                    __html: yearPlan.description.replace(
-                      /<ul>/g,
-                      '<ul class="list-disc pl-6 space-y-2">'
-                    ),
-                  }}
-                ></div>
+                  dangerouslySetInnerHTML={{ __html: yearPlan?.tags }}
+                  className="[&>ul]:list-disc [&>ul]:pl-5 [&>li]:marker:text-green-600 text-gray-700 space-y-2"
+                />
+
                 <button
                   onClick={() => handleCheckout(yearPlan.stripePriceId)}
-                  className="flex gap-5 mt-5 bg-[#078147] text-white px-6 py-2 rounded-lg hover:bg-black transition duration-300"
+                  className="w-full bg-[#078147] text-white py-3 rounded-lg font-semibold hover:bg-[#066139] transition-colors flex items-center justify-center space-x-2"
                 >
-                  <ArrowUpRight />
-                  Purchase Plan
+                  {yearPlan.price > selectedPlanPrice ? (
+                    <>
+                      <span>Upgrade Plan</span>
+                      <ArrowUpRight className="h-5 w-5" />
+                    </>
+                  ) : (
+                    <>
+                      <span>DownGrade Plan</span>
+                      <ArrowDownRight className="h-5 w-5" />
+                    </>
+                  )}
                 </button>
               </div>
             ))}
@@ -346,52 +398,31 @@ export const SubscriptionBilling: React.FC = () => {
                 </p>
 
                 <div
-                  className="text-sm text-gray-800"
-                  dangerouslySetInnerHTML={{
-                    __html: monthlyPlan.description.replace(
-                      /<ul>/g,
-                      '<ul class="list-disc pl-6 space-y-2">'
-                    ),
-                  }}
-                ></div>
+                  dangerouslySetInnerHTML={{ __html: monthlyPlan?.tags }}
+                  className="[&>ul]:list-disc [&>ul]:pl-5 [&>li]:marker:text-green-600 text-gray-700 space-y-2"
+                />
+
                 <button
-                  className="mt-5 bg-[#078147] text-white px-6 py-2 rounded-lg hover:bg-black transition duration-300"
+                  className="w-full bg-[#078147] text-white py-3 rounded-lg font-semibold hover:bg-[#066139] transition-colors flex items-center justify-center space-x-2"
                   onClick={() => handleCheckout(monthlyPlan.stripePriceId)}
                 >
-                  Purchase Plan
+                  {monthlyPlan.price > selectedPlanPrice ? (
+                    <>
+                      <span>Upgrade Plan</span>
+                      <ArrowUpRight className="w-5 h-5" />
+                    </>
+                  ) : (
+                    <>
+                      <span>DownGrade Plan</span>
+                      <ArrowDownRight className="w-5 h-5" />
+                    </>
+                  )}
                 </button>
               </div>
             ))}
           </div>
         )}
       </div>
-
-      {/* Payment Method */}
-      {/* <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h2 className="text-xl font-bold text-black mb-6">Payment Method</h2>
-
-        <div className="flex items-center justify-between p-4 border rounded-lg">
-          <div className="flex items-center space-x-4">
-            <div className="w-12 h-8 bg-blue-600 rounded flex items-center justify-center">
-              <CreditCard className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <p className="font-medium text-black">•••• •••• •••• 4242</p>
-              <p className="text-sm text-gray-600">Expires 12/26</p>
-            </div>
-          </div>
-          <button className="text-[#078147] font-semibold hover:underline">
-            Update
-          </button>
-        </div>
-
-        <button
-          onClick={() => setShowAddPaymentModal(true)}
-          className="mt-4 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-200 transition-colors"
-        >
-          Add New Payment Method
-        </button>
-      </div> */}
 
       {/* Cancel Subscription Modal */}
       {showCancelModal && (

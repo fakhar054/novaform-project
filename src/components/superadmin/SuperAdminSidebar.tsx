@@ -120,11 +120,15 @@ export const SuperAdminSidebar: React.FC<SuperAdminSidebarProps> = ({
     });
   }
 
-  menuItems.push({
-    id: "roles" as SuperAdminSection,
-    label: "User Roles",
-    icon: Shield,
-  });
+  //i will show only super admin if also other user then un-comment code below
+  // if (permissions?.user_roles || role === "super-admin") {
+  if (role === "super-admin") {
+    menuItems.push({
+      id: "roles" as SuperAdminSection,
+      label: "User Roles",
+      icon: Shield,
+    });
+  }
 
   menuItems.push({
     id: "subscrption_plan" as SuperAdminSection,

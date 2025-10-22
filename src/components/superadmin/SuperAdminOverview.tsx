@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Users,
   DollarSign,
@@ -29,223 +29,276 @@ import {
 import { SuperAdminSection } from "@/pages/SuperAdmin";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-
-type TimeFilter =
-  | "last7"
-  | "last30"
-  | "last90"
-  | "prev30"
-  | "prev90"
-  | "custom";
+// import { differenceInDays, parseISO, setDate } from "date-fns";
+import Spinner from "../Spinner";
+import "react-date-range/dist/styles.css";
+import "react-date-range/dist/theme/default.css";
+import { DateRangePicker } from "react-date-range"; //https://youtu.be/lO3MVkTPvIc video lecture and https://www.npmjs.com/package/605-react-date-range package link
+import { format } from "date-fns";
+type TimeFilter = "last7" | "last30" | "last90";
 
 interface SuperAdminOverviewProps {
   onSectionChange: (section: SuperAdminSection) => void;
 }
 
-const revenueData = [
-  { month: "Jan", revenue: 8420, users: 145 },
-  { month: "Feb", revenue: 9240, users: 167 },
-  { month: "Mar", revenue: 10180, users: 189 },
-  { month: "Apr", revenue: 11320, users: 201 },
-  { month: "May", revenue: 12150, users: 234 },
-  { month: "Jun", revenue: 13420, users: 267 },
-];
-
-// const revenueData = [
-//   { month: "Jan", users: 145 },
-//   { month: "Feb", users: 167 },
-//   { month: "Mar", users: 189 },
-//   { month: "Apr", users: 201 },
-//   { month: "May", users: 234 },
-//   { month: "Jun", users: 267 },
-// ];
-
 export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
   onSectionChange,
 }) => {
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>("last30");
-  const [totalUsers, setTotalUsers] = useState<number | null>([]);
+  const [totalUsers, setTotalUsers] = useState([]);
+  const [timeFilter, setTimeFilter] = useState("last7");
+  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState([]);
+  const [activeUser, setActiveUsers] = useState(0);
+  const [suspendedUser, setSuspendedUser] = useState(0);
+  const [revenueAgainstTime, setRevenueAgainstTime] = useState(0);
+  const [totalRevenue, setTotalRevenue] = useState(0);
+  const [signupsAgainstTime, setSignupsAgainstTime] = useState(0);
+  const [userChartData, setUserChartData] = useState<any[]>([]);
 
-  //fetching active and suspended
-  const [activeCount, setActiveCount] = useState(0);
-  const [suspendedCount, setSuspendedCount] = useState(0);
-  const [allUsersData, setAllUsersData] = useState([]);
-  const [subscription, setSubscriptions] = useState([]);
-  const [totalAmount, setTotalAmount] = useState();
-  const [monthlyAmount, setMonthlyAmount] = useState();
-  const [newUsers, setNewUsers] = useState();
-  const [chartData, setChartData] = useState([]);
-  const [userChartdata, setUserChartData] = useState([]);
-  //fetching total users
-  const [loadingUsers, setLoadingUsers] = useState<boolean>(true);
+  //for line chart
+  const [chartData, setChartData] = useState<any[]>([]);
+  //for calnder
+  const [openCalender, setOpenCalender] = useState(false);
+  const calendarRef = useRef(null);
+
+  const [Rdate, setRdate] = useState({
+    startDate: new Date(),
+    endDate: new Date(),
+    key: "selection",
+  });
 
   useEffect(() => {
-    const fetchUsersData = async () => {
-      setLoadingUsers(true);
-      const { data, error } = await supabase.from("users").select("*");
-      if (error) {
-        toast.error("Error While Fetching data");
-        setLoadingUsers(false);
-        return;
-      }
-      if (data) {
-        setTotalUsers(data);
-        const active_users = data.filter((user) => user.accountStatus === true);
-        const suspended_user = data.filter(
-          (user) => user.accountStatus === false
-        );
-        setActiveCount(active_users.length);
-        setSuspendedCount(suspended_user.length);
+    fetchUsers(timeFilter);
+    fetchRevenue(timeFilter);
+    fetchTotalRevenue();
+    fetchSignups(timeFilter);
+    fetchRevenueChart(timeFilter);
+    fetchUserChart(timeFilter);
 
-        const now = new Date();
-        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-        const usersThisMonth = data.filter((user) => {
-          const createdDate = new Date(user.created_at);
-          return createdDate >= firstDay && createdDate <= lastDay;
-        });
-        setNewUsers(usersThisMonth.length);
-
-        const now_user = new Date();
-        const months = [];
-
-        // prepare last 6 months
-        for (let i = 5; i >= 0; i--) {
-          const d = new Date(
-            now_user.getFullYear(),
-            now_user.getMonth() - i,
-            1
-          );
-          months.push({
-            month: d.toLocaleString("default", { month: "short" }),
-            year: d.getFullYear(),
-            count: 0,
-          });
-        }
-        data.forEach((user) => {
-          const createdAt = new Date(user.created_at);
-          months.forEach((m) => {
-            if (
-              createdAt.getMonth() ===
-                new Date(
-                  m.year,
-                  now_user.getMonth() - (5 - months.indexOf(m)),
-                  1
-                ).getMonth() &&
-              createdAt.getFullYear() === m.year
-            ) {
-              m.count += 1;
-            }
-          });
-        });
-        setUserChartData(months);
-
-        console.log("User registrations in last 6 months:", months);
+    const handleClickOutside = (event) => {
+      if (calendarRef.current && !calendarRef.current.contains(event.target)) {
+        setOpenCalender(false);
       }
     };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [timeFilter]);
 
-    const fetchSubscriptions = async () => {
-      setLoadingUsers(true);
-      const { data, error } = await supabase.from("subscription").select("*");
+  const fetchUsers = async (filter: string) => {
+    try {
+      let days = 7;
+      if (filter === "last30") days = 30;
+      if (filter === "last90") days = 90;
+
+      const fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - days);
+
+      const { data, error } = await supabase
+        .from("users")
+        .select("*")
+        .gte("created_at", fromDate.toISOString());
 
       if (error) {
-        toast.error("Error while fetching subscriptions");
-        console.error("Subscription fetch error:", error.message);
-        setLoadingUsers(true);
+        console.log("Error in user Fetching in dashborad");
+        setLoading(false);
         return;
       }
+      console.log("data  Fetching in dashborad", data);
+      setUsers(data);
+      setLoading(false);
 
-      if (data) {
-        console.log("Subscriptions:", data);
-        setSubscriptions(data);
-
-        const total_revenue = data.reduce((sum, sub) => {
-          return sum + (sub.amount_paid || 0);
-        }, 0);
-        setTotalAmount(total_revenue);
-        //for month
-        const now = new Date();
-        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-        const monthlyRevenue = data
-          .filter((sub) => {
-            const createdDate = new Date(sub.created_at);
-            return createdDate >= firstDay && createdDate <= lastDay;
-          })
-          .reduce((sum, sub) => sum + (sub.amount_paid || 0), 0);
-        setMonthlyAmount(monthlyRevenue);
-
-        // code for six month graph
-        const now_2 = new Date();
-        const formatMonth = (date) =>
-          `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
-            2,
-            "0"
-          )}`;
-
-        const grouped = {};
-
-        data.forEach((sub) => {
-          const date = new Date(sub.created_at);
-          const monthKey = formatMonth(date);
-
-          if (!grouped[monthKey]) {
-            grouped[monthKey] = 0;
-          }
-          grouped[monthKey] += sub.amount_paid || 0;
-        });
-
-        const revenueData = [];
-        for (let i = 5; i >= 0; i--) {
-          const d = new Date(now_2.getFullYear(), now_2.getMonth() - i, 1);
-          const key = formatMonth(d);
-
-          revenueData.push({
-            month: key,
-            revenue: grouped[key] || 0,
-          });
-        }
-
-        console.log("Revenue data : ", revenueData);
-        setChartData(revenueData);
-
-        setLoadingUsers(false);
-      }
-    };
-
-    fetchUsersData();
-    fetchSubscriptions();
-  }, []);
-
-  const kpiData = {
-    totalUsers: { value: 1247, change: 12.4, trend: "up" },
-    activeUsers: { value: 892, change: 8.7, trend: "up" },
-    suspendedUsers: { value: 23, change: -15.2, trend: "down" },
-    mrr: { value: 13420, change: 14.3, trend: "up" },
-    totalRevenue: { value: 67240, change: 18.9, trend: "up" },
-    newSignups: { value: 87, change: -8.1, trend: "down" },
+      const activeCount =
+        data?.filter((u) => u.accountStatus === true).length || 0;
+      const suspendedCount =
+        data?.filter((u) => u.accountStatus === false).length || 0;
+      setActiveUsers(activeCount);
+      setSuspendedUser(suspendedCount);
+    } catch (err) {
+      console.error("Error fetching users:", err);
+    }
   };
 
-  // const getTimeFilterLabel = (filter: TimeFilter) => {
-  //   switch (filter) {
-  //     case "last7":
-  //       return "Last 7 days";
-  //     case "last30":
-  //       return "Last 30 days";
-  //     case "last90":
-  //       return "Last 90 days";
-  //     case "prev30":
-  //       return "Previous 30 days";
-  //     case "prev90":
-  //       return "Previous 90 days";
-  //     case "custom":
-  //       return "Custom range";
-  //     default:
-  //       return "Last 30 days";
-  //   }
-  // };
+  const fetchRevenue = async (filter: string) => {
+    try {
+      let days = 7;
+      if (filter === "last30") days = 30;
+      if (filter === "last90") days = 90;
+      const fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - days);
+
+      const { data, error } = await supabase
+        .from("subscription")
+        .select("amount_paid, created_at")
+        .gte("created_at", fromDate.toISOString());
+
+      if (error) {
+        console.error("Error fetching revenue:", error);
+        return;
+      }
+      const totalRevenue =
+        data?.reduce((sum, sub) => sum + Number(sub.amount_paid), 0) || 0;
+      setRevenueAgainstTime(totalRevenue);
+      console.log("Fetching data from mRevenue: ", data);
+    } catch (err) {
+      console.error("Error fetching revenue:", err);
+    }
+  };
+
+  //for signup against
+  const fetchSignups = async (filter: string) => {
+    try {
+      let days = 7;
+      if (filter === "last30") days = 30;
+      if (filter === "last90") days = 90;
+
+      const fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - days);
+
+      const { data, error } = await supabase
+        .from("users")
+        .select("id, created_at")
+        .gte("created_at", fromDate.toISOString());
+
+      if (error) {
+        console.error("Error fetching signups:", error);
+        return;
+      }
+
+      setSignupsAgainstTime(data?.length || 0);
+    } catch (err) {
+      console.error("Error fetching signups:", err);
+    }
+  };
+
+  // Fetch total revenue (no filter)
+  const fetchTotalRevenue = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("subscription")
+        .select("amount_paid");
+      if (error) {
+        console.error("Error fetching total revenue:", error);
+        return;
+      }
+      const total =
+        data?.reduce((sum, sub) => sum + Number(sub.amount_paid), 0) || 0;
+      setTotalRevenue(total);
+    } catch (err) {
+      console.error("Error fetching total revenue:", err);
+    }
+  };
+
+  //for line chat
+  const fetchRevenueChart = async (filter: string) => {
+    try {
+      let days = 7;
+      if (filter === "last30") days = 30;
+      if (filter === "last90") days = 90;
+      const fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - days);
+
+      const { data, error } = await supabase
+        .from("subscription")
+        .select("amount_paid, created_at")
+        .gte("created_at", fromDate.toISOString());
+
+      if (error) {
+        console.error("Error fetching chart revenue:", error);
+        return;
+      }
+      // ✅ Group by day if filter <= 30, otherwise by month
+      const grouped: Record<string, number> = {};
+
+      data?.forEach((sub) => {
+        const date = new Date(sub.created_at);
+
+        let key = "";
+        if (days <= 30) {
+          // group by day
+          key = date.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          });
+        } else {
+          // group by month
+          key = date.toLocaleDateString("en-US", {
+            month: "short",
+            year: "numeric",
+          });
+        }
+
+        grouped[key] = (grouped[key] || 0) + Number(sub.amount_paid);
+      });
+
+      // ✅ Convert into array for recharts
+      const chartFormatted = Object.entries(grouped).map(([key, value]) => ({
+        month: key,
+        revenue: value,
+      }));
+
+      setChartData(chartFormatted);
+    } catch (err) {
+      console.error("Error fetching chart data:", err);
+    }
+  };
+
+  //for user trend
+  const fetchUserChart = async (filter: string) => {
+    try {
+      let days = 7;
+      if (filter === "last30") days = 30;
+      if (filter === "last90") days = 90;
+
+      const fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - days);
+
+      const { data, error } = await supabase
+        .from("users")
+        .select("created_at")
+        .gte("created_at", fromDate.toISOString());
+
+      if (error) {
+        console.error("Error fetching user chart:", error);
+        return;
+      }
+
+      const grouped: Record<string, number> = {};
+
+      data?.forEach((user) => {
+        const date = new Date(user.created_at);
+
+        let key = "";
+        if (days <= 30) {
+          key = date.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          });
+        } else {
+          key = date.toLocaleDateString("en-US", {
+            month: "short",
+            year: "numeric",
+          });
+        }
+
+        grouped[key] = (grouped[key] || 0) + 1;
+      });
+
+      const chartFormatted = Object.entries(grouped)
+        .map(([key, value]) => ({
+          month: key,
+          count: value,
+        }))
+        .sort(
+          (a, b) => new Date(a.month).getTime() - new Date(b.month).getTime()
+        );
+
+      setUserChartData(chartFormatted);
+    } catch (err) {
+      console.error("Error fetching user chart data:", err);
+    }
+  };
 
   const handleQuickAction = (action: string) => {
     switch (action) {
@@ -264,6 +317,150 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
       default:
         break;
     }
+  };
+
+  function formatDate(dateInput) {
+    const date = new Date(dateInput);
+    if (isNaN(date)) return "Invalid Date";
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const year = date.getFullYear();
+    return `${month}-${day}-${year}`;
+  }
+
+  const handleDateChange = async (ranges) => {
+    const { startDate, endDate } = ranges.selection;
+    setRdate(ranges.selection);
+
+    const startFormattedDate = formatDate(startDate);
+    const endFormattedDate = formatDate(endDate);
+
+    if (startFormattedDate === endFormattedDate) {
+      console.log("Both dates are equal");
+      return;
+    }
+
+    console.log("Starting Date:", startFormattedDate);
+    console.log("Ending Date:", endFormattedDate);
+
+    try {
+      setLoading(true);
+
+      const startISO = new Date(startDate).toISOString();
+      const endISO = new Date(endDate).toISOString();
+
+      // --- 🧩 Fetch both tables in parallel ---
+      const [usersRes, subsRes] = await Promise.all([
+        supabase
+          .from("users")
+          .select("*")
+          .gte("created_at", startISO)
+          .lte("created_at", endISO),
+
+        supabase
+          .from("subscription")
+          .select("amount_paid, created_at")
+          .gte("created_at", startISO)
+          .lte("created_at", endISO),
+      ]);
+
+      // --- 🧩 Handle Users (Data + Chart) ---
+      if (usersRes.error) {
+        console.error("Error fetching users:", usersRes.error);
+        setUsers([]);
+        setUserChartData([]);
+      } else {
+        const userData = usersRes.data || [];
+        setUsers(userData);
+        console.log("Fetched users:", userData);
+
+        // ✅ Group users by day (or month if large range)
+        const diffDays =
+          (new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24);
+        const groupedUsers = {};
+
+        userData.forEach((user) => {
+          const date = new Date(user.created_at);
+          const key =
+            diffDays <= 30
+              ? date.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                })
+              : date.toLocaleDateString("en-US", {
+                  month: "short",
+                  year: "numeric",
+                });
+
+          groupedUsers[key] = (groupedUsers[key] || 0) + 1;
+        });
+
+        const userChartFormatted = Object.entries(groupedUsers)
+          .map(([key, value]) => ({
+            date: key,
+            count: value,
+          }))
+          .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        setUserChartData(userChartFormatted);
+        console.log("User Chart Data:", userChartFormatted);
+      }
+
+      // --- 🧩 Handle Subscriptions (Revenue + Chart) ---
+      if (subsRes.error) {
+        console.error("Error fetching revenue:", subsRes.error);
+        setRevenueAgainstTime(0);
+        setChartData([]);
+      } else {
+        const subsData = subsRes.data || [];
+
+        const totalRevenue =
+          subsData.reduce((sum, sub) => sum + Number(sub.amount_paid), 0) || 0;
+        setRevenueAgainstTime(totalRevenue);
+        console.log("Fetched subscriptions:", subsData);
+        console.log("Total Revenue:", totalRevenue);
+
+        // ✅ Group by day (or month)
+        const diffDays =
+          (new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24);
+        const groupedRevenue = {};
+
+        subsData.forEach((sub) => {
+          const date = new Date(sub.created_at);
+          const key =
+            diffDays <= 30
+              ? date.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                })
+              : date.toLocaleDateString("en-US", {
+                  month: "short",
+                  year: "numeric",
+                });
+
+          groupedRevenue[key] =
+            (groupedRevenue[key] || 0) + Number(sub.amount_paid);
+        });
+
+        const chartFormatted = Object.entries(groupedRevenue)
+          .map(([key, value]) => ({
+            date: key,
+            revenue: value,
+          }))
+          .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        setChartData(chartFormatted);
+        console.log("Revenue Chart Data:", chartFormatted);
+      }
+    } catch (err) {
+      console.error("Unexpected error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenCalender = () => {
+    setOpenCalender(!openCalender);
   };
 
   const KPICard = ({
@@ -295,22 +492,15 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
             className={`flex items-center text-sm font-medium ${
               trend === "up" ? "text-green-600" : "text-red-600"
             }`}
-          >
-            {trend === "up" ? (
-              <TrendingUp className="w-4 h-4 mr-1" />
-            ) : (
-              <TrendingDown className="w-4 h-4 mr-1" />
-            )}
-            {Math.abs(change)}%
-          </div>
+          ></div>
         </div>
-        <p className="text-sm text-gray-500 mt-1">
-          {trend === "up" ? "+" : ""}
-          {change}% from previous period
-        </p>
       </CardContent>
     </Card>
   );
+
+  if (loading) {
+    return <Spinner />;
+  }
 
   return (
     <div className="space-y-6">
@@ -325,24 +515,46 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center space-x-4 mt-4 sm:mt-0">
+        <div
+          ref={calendarRef}
+          className="flex items-center space-x-4 mt-4 sm:mt-0"
+        >
           <Select
             value={timeFilter}
-            onValueChange={(value) => setTimeFilter(value as TimeFilter)}
+            onValueChange={(value) => {
+              setTimeFilter(value);
+              if (value === "customRange") {
+                setOpenCalender((prev) => !prev);
+              } else {
+                setOpenCalender(false);
+              }
+            }}
           >
             <SelectTrigger className="w-48">
               <Calendar className="w-4 h-4 mr-2" />
-              <SelectValue />
+              <SelectValue placeholder="Select Time Range" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="last7">Last 7 days</SelectItem>
               <SelectItem value="last30">Last 30 days</SelectItem>
               <SelectItem value="last90">Last 90 days</SelectItem>
-              <SelectItem value="prev30">Previous 30 days</SelectItem>
-              <SelectItem value="prev90">Previous 90 days</SelectItem>
-              <SelectItem value="custom">Custom range</SelectItem>
+              <SelectItem value="customRange">Custom Range</SelectItem>
             </SelectContent>
           </Select>
+
+          <div
+            className={`absolute top-[100px] right-[50px] border border-black rounded shadow-2xl shadow-gray-800 bg-white transition-all duration-300 ease-in-out transform ${
+              openCalender
+                ? "opacity-100 translate-y-0 visible"
+                : "opacity-0 -translate-y-4 invisible"
+            }`}
+          >
+            <DateRangePicker
+              ranges={[Rdate]}
+              onChange={handleDateChange}
+              maxDate={new Date()}
+            />
+          </div>
         </div>
       </div>
 
@@ -350,48 +562,46 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
         <KPICard
           title="Total Users"
-          value={totalUsers.length}
-          // change={kpiData.totalUsers.change}
-          trend={kpiData.totalUsers.trend}
+          value={users?.length}
+          trend=""
           icon={Users}
         />
         <KPICard
           title="Active Users"
-          value={activeCount}
-          // value={kpiData.activeUsers.value}
-          change={kpiData.activeUsers.change}
-          trend={kpiData.activeUsers.trend}
+          value={activeUser}
+          // trend={kpiData.activeUsers.trend}
           icon={Users}
         />
         <KPICard
           title="Suspended Users"
-          value={suspendedCount}
-          // value={kpiData.suspendedUsers.value}
-          change={kpiData.suspendedUsers.change}
-          trend={kpiData.suspendedUsers.trend}
+          value={suspendedUser}
+          // change={kpiData.suspendedUsers.change}
+          // trend={kpiData.suspendedUsers.trend}
           icon={Users}
         />
         <KPICard
-          title="Monthly Revenue (MRR)"
-          value={monthlyAmount}
+          title="Revenue (RR)"
+          // value={monthlyAmount}
+          value={revenueAgainstTime}
           prefix="€"
-          change={kpiData.mrr.change}
-          trend={kpiData.mrr.trend}
+          // change={kpiData.mrr.change}
+          // trend={kpiData.mrr.trend}
           icon={DollarSign}
         />
         <KPICard
           title="Total Revenue"
-          value={totalAmount}
+          value={totalRevenue}
           prefix="€"
-          change={kpiData.totalRevenue.change}
-          trend={kpiData.totalRevenue.trend}
+          change={totalRevenue}
+          trend={totalRevenue}
           icon={DollarSign}
         />
+
         <KPICard
           title="New Signups"
-          value={newUsers}
-          change={kpiData.newSignups.change}
-          trend={kpiData.newSignups.trend}
+          value={signupsAgainstTime}
+          // change={kpiData.newSignups.change}
+          // trend={kpiData.newSignups.trend}
           icon={TrendingUp}
         />
       </div>
@@ -441,7 +651,7 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={userChartdata}>
+              <BarChart data={userChartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="month" stroke="#6b7280" />
                 <YAxis stroke="#6b7280" />
@@ -458,7 +668,6 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
           </CardContent>
         </Card>
       </div>
-
       {/* Quick Actions */}
       <Card className="bg-white border border-gray-200 text-left">
         <CardHeader>
@@ -491,14 +700,6 @@ export const SuperAdminOverview: React.FC<SuperAdminOverviewProps> = ({
               <DollarSign className="w-8 h-8 text-[#1C9B7A] mb-2 group-hover:scale-110 transition-transform" />
               <h3 className="font-semibold text-gray-900">Payment Link</h3>
               <p className="text-sm text-gray-600">Create payment link</p>
-            </button>
-            <button
-              onClick={() => handleQuickAction("view-analytics")}
-              className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-[#1C9B7A] transition-all duration-200 text-left group"
-            >
-              <TrendingUp className="w-8 h-8 text-[#1C9B7A] mb-2 group-hover:scale-110 transition-transform" />
-              <h3 className="font-semibold text-gray-900">View Analytics</h3>
-              <p className="text-sm text-gray-600">Detailed insights</p>
             </button>
           </div>
         </CardContent>

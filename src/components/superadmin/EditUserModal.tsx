@@ -29,7 +29,8 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { useToast } from "@/hooks/use-toast";
+// import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
 interface AdminUser {
@@ -57,7 +58,7 @@ interface EditUserModalProps {
 
 const availableRoles = [
   { value: "admin", label: "Admin" },
-  { value: "support-staff", label: "Support" },
+  { value: "staff", label: "Support" },
   { value: "billing", label: "Billing" },
 ];
 
@@ -99,8 +100,8 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
   onClose,
   user,
   onSave,
+  updateUserAgain,
 }) => {
-  const { toast } = useToast();
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -108,23 +109,15 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
     phone: "",
     role: "",
   });
+  console.log("User has this information: ", user);
 
   console.log("users infromation from edit user model", user);
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
 
   useEffect(() => {
     if (user) {
-      let firstName = "";
-      let lastName = "";
-
-      if (user.name) {
-        const [f, ...l] = user.name.split(" ");
-        firstName = f || "";
-        lastName = l.join(" ") || "";
-      } else {
-        firstName = (user as any).firstName || "";
-        lastName = (user as any).lastName || "";
-      }
+      const fullName = user?.businessName;
+      const [firstName, lastName] = fullName.split(" ");
 
       setFormData({
         firstName,
@@ -220,64 +213,95 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
       data: { session },
       error,
     } = await supabase.auth.getSession();
-    // console.log("Access token is:", session?.access_token);
+
     const userId = user.user_id;
     const { firstName, lastName, role, phone, email } = formData;
+    const fullName = `${firstName} ${lastName}`;
+
     try {
-      const response = await fetch(
-        "https://ajbxscredobhqfksaqrk.supabase.co/functions/v1/update-teamates",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({
-            user_id: userId,
-            firstName,
-            lastName,
-            phone,
-            role,
-            email,
-          }),
-        }
-      );
-      const result = await response.json();
-      if (!response.ok) {
-        console.error("Error updating user:", result.error);
+      const { data, error: updateError } = await supabase
+        .from("users")
+        .update({
+          businessName: fullName,
+          phone: phone,
+          role: role,
+          email: email,
+        })
+        .eq("user_id", userId);
+
+      if (updateError) {
+        console.error("Error updating user:", updateError.message);
       } else {
-        console.log("User updated successfully:", result.message);
+        console.log("User updated successfully:", data);
+        updateUserAgain();
+        toast.success("Data Updated Successfully");
+
+        onClose();
       }
     } catch (err) {
       console.error("Unexpected error:", err.message);
     }
-
-    //for permissions
-    const permissionsPayload = {
-      user_management: userPermissions.includes("user_management"),
-      payment_processing: userPermissions.includes("payment_processing"),
-      system_settings: userPermissions.includes("system_settings"),
-      analytics_reports: userPermissions.includes("analytics_reports"),
-      billing_invoices: userPermissions.includes("billing_invoices"),
-    };
-
-    const { error: permissionsError } = await supabase
-      .from("permissions")
-      .update(permissionsPayload)
-      .eq("role", role);
-
-    if (permissionsError) {
-      console.error("Error updating permissions:", permissionsError.message);
-    } else {
-      console.log("Permissions updated successfully");
-    }
   };
-  const handleResetPassword = () => {
-    toast({
-      title: "Password reset email sent",
-      description: `A password reset link has been sent to ${formData.email}`,
-    });
-  };
+
+  // const handleSave = async () => {
+  //   const {
+  //     data: { session },
+  //     error,
+  //   } = await supabase.auth.getSession();
+  //   // console.log("Access token is:", session?.access_token);
+  //   const userId = user.user_id;
+  //   const { firstName, lastName, role, phone, email } = formData;
+  //   const fullName = `${firstName} ${lastName}`;
+  //   try {
+  //     const response = await fetch(
+  //       "https://ajbxscredobhqfksaqrk.supabase.co/functions/v1/update-teamates",
+  //       {
+  //         method: "POST",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //           Authorization: `Bearer ${session?.access_token}`,
+  //         },
+  //         body: JSON.stringify({
+  //           user_id: userId,
+  //           businessName: fullName,
+  //           phone,
+  //           role,
+  //           email,
+  //         }),
+  //       }
+  //     );
+  //     const result = await response.json();
+  //     if (!response.ok) {
+  //       console.error("Error updating user:", result.error);
+  //     } else {
+  //       console.log("User updated successfully:", result.message);
+  //     }
+  //   } catch (err) {
+  //     console.error("Unexpected error:", err.message);
+  //   }
+
+  //   //for permissions
+  //   const permissionsPayload = {
+  //     user_management: userPermissions.includes("user_management"),
+  //     payment_processing: userPermissions.includes("payment_processing"),
+  //     system_settings: userPermissions.includes("system_settings"),
+  //     analytics_reports: userPermissions.includes("analytics_reports"),
+  //     billing_invoices: userPermissions.includes("billing_invoices"),
+  //   };
+
+  //   const { error: permissionsError } = await supabase
+  //     .from("permissions")
+  //     .update(permissionsPayload)
+  //     .eq("role", role);
+
+  //   if (permissionsError) {
+  //     console.error("Error updating permissions:", permissionsError.message);
+  //   } else {
+  //     console.log("Permissions updated successfully");
+  //   }
+  // };
+
+  const handleResetPassword = () => {};
 
   if (!user) return null;
 
@@ -331,6 +355,7 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({
                 type="email"
                 value={formData.email}
                 onChange={(e) => handleInputChange("email", e.target.value)}
+                readOnly
                 placeholder="Enter email address"
               />
             </div>

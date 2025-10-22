@@ -88,35 +88,6 @@ const mockUsers: AdminUser[] = [
   },
 ];
 
-// const mockRoles: Role[] = [
-//   {
-//     id: "1",
-//     name: "Admin",
-//     description: "Full system access",
-//     permissions: ["users", "analytics"],
-//   },
-//   {
-//     id: "2",
-//     name: "Support Staff",
-//     description: "View clients, no payment actions",
-//     permissions: ["users", "analytics"],
-//   },
-//   {
-//     id: "3",
-//     name: "Billing",
-//     description: "Manage invoices only",
-//     permissions: ["payments", "billing"],
-//   },
-// ];
-
-// const allPermissions = [
-//   { id: "user_management", label: "User Management", icon: Users },
-//   { id: "payment_processing", label: "Payment Processing", icon: Shield },
-//   { id: "system_settings", label: "System Settings", icon: Settings },
-//   { id: "analytics_reports", label: "Analytics & Reports", icon: Eye },
-//   { id: "billing_invoices", label: "Billing & Invoices", icon: UserPlus },
-// ];
-
 const mockRoles: Role[] = [
   {
     id: "1",
@@ -144,6 +115,7 @@ const allPermissions = [
   { id: "settings", label: "System Settings", icon: Settings },
   { id: "analytics", label: "Analytics & Reports", icon: Eye },
   { id: "billing", label: "Billing & Invoices", icon: UserPlus },
+  { id: "userRoles", label: "User Roles", icon: UserPlus },
 ];
 
 export const SuperAdminRoles: React.FC = () => {
@@ -180,48 +152,16 @@ export const SuperAdminRoles: React.FC = () => {
     settings: "system_settings",
     analytics: "analytics_reports",
     billing: "billing_invoices",
+    userRoles: "user_roles",
   };
 
   const [isEditUserOpen, setIsEditUserOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
 
-  // const fetchPermissionsForRoles = async () => {
-  //   const updatedRoles = await Promise.all(
-  //     mockRoles.map(async (role) => {
-  //       const { data, error } = await supabase
-  //         .from("permissions")
-  //         .select("*")
-  //         .eq("role", role.name)
-  //         .single();
-
-  //       if (error || !data) {
-  //         console.warn(`No permissions found for role: ${role.name}`);
-  //         return role;
-  //       }
-
-  //       const selectedPermissions: string[] = [];
-
-  //       for (const [key, value] of Object.entries(data)) {
-  //         const match = Object.entries(permissionColumnMap).find(
-  //           ([permKey, column]) => column === key && value === true
-  //         );
-  //         if (match) selectedPermissions.push(match[0]);
-  //       }
-
-  //       return {
-  //         ...role,
-  //         permissions: selectedPermissions,
-  //       };
-  //     })
-  //   );
-
-  //   setRoles(updatedRoles);
-  // };
-
   const fetchPermissionsForRoles = async () => {
     const updatedRoles = await Promise.all(
       mockRoles.map(async (role) => {
-        const dbRole = roleNameToDb(role.name); // Use the mapping here!
+        const dbRole = roleNameToDb(role.name);
         const { data, error } = await supabase
           .from("permissions")
           .select("*")
@@ -343,6 +283,7 @@ export const SuperAdminRoles: React.FC = () => {
     e.preventDefault();
     const accessToken = await getAccessToken();
     const { firstName, lastName, email, role, password } = newUser;
+    const fullName = `${firstName} ${lastName}`;
 
     try {
       const response = await fetch(
@@ -354,8 +295,9 @@ export const SuperAdminRoles: React.FC = () => {
             Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
-            firstName,
-            lastName,
+            // firstName,
+            // lastName,
+            businessName: fullName,
             email,
             password,
             role: roleNameToDb(role),
@@ -381,55 +323,26 @@ export const SuperAdminRoles: React.FC = () => {
   const handleSuspendUser = async (userId, newStatus) => {
     set_all_users((prev) =>
       prev.map((user) =>
-        user.id === userId ? { ...user, accountStatus: newStatus } : user
+        user.user_id === userId ? { ...user, accountStatus: newStatus } : user
       )
     );
 
     const { data, error } = await supabase
       .from("users")
       .update({ accountStatus: newStatus })
-      .eq("id", userId);
+      .eq("user_id", userId);
 
     if (error) {
       console.error("Error updating user status:", error.message);
       return;
+    } else {
+      toast.success("Status Updated");
     }
   };
 
   const handleDeleteUser = (userId: string) => {
     setUsers(users.filter((user) => user.id !== userId));
   };
-
-  // const handleManagePermissions = async (role: Role) => {
-  //   try {
-  //     const { data, error } = await supabase
-  //       .from("permissions")
-  //       .select("*")
-  //       .eq("role", role.name)
-  //       .single();
-
-  //     if (error) {
-  //       console.error("Error fetching permissions:", error.message);
-  //     }
-  //     const selectedPermissions: string[] = [];
-  //     if (data) {
-  //       for (const [key, value] of Object.entries(data)) {
-  //         const match = Object.entries(permissionColumnMap).find(
-  //           ([permKey, column]) => column === key && value === true
-  //         );
-  //         if (match) selectedPermissions.push(match[0]);
-  //       }
-  //     }
-  //     setSelectedRole({
-  //       ...role,
-  //       permissions: selectedPermissions,
-  //     });
-
-  //     setIsManagePermissionsOpen(true);
-  //   } catch (err) {
-  //     console.error("Unexpected error fetching permissions:", err);
-  //   }
-  // };
 
   const handleManagePermissions = async (role: Role) => {
     try {
@@ -580,8 +493,8 @@ export const SuperAdminRoles: React.FC = () => {
       ? selectedRole.permissions.filter((p) => p !== permissionId)
       : [...selectedRole.permissions, permissionId];
 
-    console.log("Selected Permissions:", updatedPermissions); // 👈 Log here
-    console.log("Selected role:", selectedRole.name); // 👈 Log here
+    console.log("Selected Permissions:", updatedPermissions);
+    console.log("Selected role:", selectedRole.name);
 
     setSelectedRole({ ...selectedRole, permissions: updatedPermissions });
     setRoles(
@@ -752,7 +665,7 @@ export const SuperAdminRoles: React.FC = () => {
                       <TableRow key={user.id}>
                         <TableCell className="font-medium text-left">
                           <div>
-                            <div>{`${user.firstName} ${user.lastName}`}</div>
+                            <div>{`${user?.businessName} `}</div>
                             <div className="text-sm text-gray-500 sm:hidden">
                               {user.email}
                             </div>
@@ -766,17 +679,17 @@ export const SuperAdminRoles: React.FC = () => {
                             {user.role}
                           </Badge>
                         </TableCell>
-                        <TableCell className="hidden md:table-cell text-sm text-gray-600">
-                          {formatCreatedAt(user.last_login)}
+                        <TableCell className="hidden md:table-cell text-sm text-gray-600 text-left">
+                          {formatCreatedAt(user?.last_login)}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-2">
                             <Switch
-                              checked={user.accountStatus === "active"}
+                              checked={user.accountStatus === true}
                               onCheckedChange={(checked) =>
                                 handleSuspendUser(
-                                  user.id,
-                                  checked ? "active" : "suspended"
+                                  user.user_id,
+                                  checked ? true : false
                                 )
                               }
                             />
@@ -789,9 +702,6 @@ export const SuperAdminRoles: React.FC = () => {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-2">
-                            {/* <Button variant="ghost" size="sm">
-                              <Edit className="w-4 h-4" />
-                            </Button> */}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -912,6 +822,7 @@ export const SuperAdminRoles: React.FC = () => {
         onClose={() => setIsEditUserOpen(false)}
         user={selectedUser}
         onSave={handleSaveUser}
+        updateUserAgain={fetchUsers}
       />
 
       {/* Confirmation Modal */}

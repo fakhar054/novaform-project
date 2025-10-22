@@ -37,6 +37,37 @@
   width: fit-content;
 }
 
+.featurs-list ul {
+  /* width: 100%; */
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.featurs-list ul li {
+  width: 50%;
+  margin: 5px 0;
+  list-style-type: disc;
+}
+/* .prose ul li::before {
+  content: "";
+  width: 0.8rem !important;
+  height: 0.8rem !important;
+  background-color: #078147;
+  border-radius: 9999px;
+  flex-shrink: 0;
+} */
+
+.rdrDefinedRangesWrapper {
+  display: none !important;
+}
+
+.featurs-list ul li::marker {
+  color: #078147; /* bullet color */
+  font-size: 1.2rem; /* bullet size */
+}
+
 @keyframes logo-spin {
   from {
     transform: rotate(0deg);

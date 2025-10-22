@@ -63,6 +63,18 @@ export const SuperAdminUsers: React.FC = () => {
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [showSendEmail, setShowSendEmail] = useState(false);
   const [showConfirmAction, setShowConfirmAction] = useState(false);
+  const [accountStatus, setAccountStatus] = useState("");
+  const [plans, setPlans] = useState([]);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
+  const [suspendedUsers, setSuspendedUsers] = useState(0);
+  const [activeUsers, setActiveUser] = useState(0);
+  const [plateFormName, setPlateForm] = useState("");
+  const [templateName, setTemplateName] = useState("");
+  const [description, setDescription] = useState();
+  const [supportEmail, setSupportEmail] = useState("");
+
   const [confirmAction, setConfirmAction] = useState<{
     type: string;
     message: string;
@@ -77,28 +89,57 @@ export const SuperAdminUsers: React.FC = () => {
     setIsCreating(false);
   };
 
+  const fetchPlans = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("subscription_plan")
+      .select("*");
+
+    if (error) {
+      console.error("Error fetching plans:", error);
+    } else {
+      // console.log("Data coming in Plans: ", data);
+      setPlans(data);
+    }
+    setLoading(false);
+  };
+
   const fetchUsers = async () => {
     setLoading(true);
     const { data, error } = await supabase.from("users").select("*");
     if (error) {
       console.error("Error fetching users:", error.message);
     } else {
-      // Filter out admin and super-admin roles directly upon fetching
       const nonAdminUsers = data.filter(
         (user) => user.role !== "admin" && user.role !== "super-admin"
       );
+
+      const suspendedCount = nonAdminUsers.filter(
+        (user) => !user.accountStatus
+      ).length;
+
+      const activeCount = nonAdminUsers.filter(
+        (user) => user.accountStatus
+      ).length;
+
       setAllUsers(nonAdminUsers);
+      setSuspendedUsers(suspendedCount);
+      setActiveUser(activeCount);
+
+      setAccountStatus(nonAdminUsers.accountStatus ? "Active" : "Suspended");
     }
     setLoading(false);
   };
 
   useEffect(() => {
     fetchUsers();
+    fetchPlans();
+    fetchSettings();
+    fetchEmailTemplate();
   }, []);
 
   const displayUsers = useMemo(() => {
     let filteredList = [...allUsers];
-
     // Apply search term filter
     if (searchTerm) {
       filteredList = filteredList.filter(
@@ -110,9 +151,10 @@ export const SuperAdminUsers: React.FC = () => {
 
     // Apply status filter
     if (statusFilter !== "all") {
-      filteredList = filteredList.filter(
-        (user) => user.accountStatus === statusFilter
-      );
+      filteredList = filteredList.filter((user) => {
+        const status = user.accountStatus ? "active" : "suspended";
+        return status === statusFilter;
+      });
     }
 
     // Apply plan filter
@@ -167,7 +209,6 @@ export const SuperAdminUsers: React.FC = () => {
       Premium: "bg-purple-100 text-purple-800",
     };
 
-    // Safely access color, provide a default if plan isn't found
     const badgeColorClass =
       colors[plan as keyof typeof colors] || "bg-gray-100 text-gray-800";
 
@@ -204,17 +245,16 @@ export const SuperAdminUsers: React.FC = () => {
       // Step 1: Get latest user data by ID
       const { data: freshUser, error } = await supabase
         .from("users")
-        .select("id, accountStatus, businessName")
-        .eq("id", user.id)
+        .select("user_id, accountStatus, businessName,email")
+        .eq("user_id", user.user_id)
         .single();
       if (error || !freshUser) {
         toast.error("Failed to fetch latest user data");
         return;
       }
-      // Step 2: Determine action based on fresh status
-      const action =
-        freshUser.accountStatus === "active" ? "suspend" : "activate";
-      // Step 3: Set state and show confirmation modal
+      console.log("Fresh User: ", freshUser);
+      const action = freshUser.accountStatus ? "Suspend" : "Active";
+      setAccountStatus(action);
       setSelectedUser(freshUser);
       setConfirmAction({
         type: action,
@@ -227,16 +267,102 @@ export const SuperAdminUsers: React.FC = () => {
     }
   };
 
-  const handleConfirmAction = async () => {
-    if (!selectedUser || !selectedUser.id) return;
+  const fetchSettings = async () => {
+    const { data, error } = await supabase
+      .from("settings")
+      .select("platform_name,support_email")
+      .single();
 
-    const newStatus =
-      selectedUser.accountStatus === "suspended" ? "active" : "suspended";
+    if (error) {
+      console.error("Error fetching platform_name:", error);
+    } else {
+      setPlateForm(data?.platform_name);
+      setSupportEmail(data?.support_email);
+    }
+  };
+
+  const fetchEmailTemplate = async () => {
+    const { data, error } = await supabase
+      .from("email_template_table")
+      .select("template_name,description")
+      .eq("template_name", "Account suspended/deactivated ")
+      .single();
+
+    if (error) {
+      console.error("Error fetching template:", error);
+    } else {
+      setTemplateName(data?.template_name);
+      console.log("Data in templates: ", data);
+      setDescription(data?.description);
+    }
+  };
+
+  const today = new Date();
+  const formattedDate = today.toISOString().split("T")[0];
+
+  const emailwithTemplate = async (useremail) => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const accessToken = session?.access_token;
+    const routeSuspended =
+      "https://ajbxscredobhqfksaqrk.supabase.co/storage/v1/object/public/emailTemplate/acountSuspended.html";
+    const accountRenewed =
+      "https://ajbxscredobhqfksaqrk.supabase.co/storage/v1/object/public/emailTemplate/activated_subscription.html";
+    const route = accountStatus === "Suspend" ? routeSuspended : accountRenewed;
+
+    const res = await fetch(
+      "https://ajbxscredobhqfksaqrk.supabase.co/functions/v1/email-with-template",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          to: useremail,
+          subject:
+            accountStatus === "Suspend"
+              ? templateName
+              : "Your account has been activated",
+          route,
+          templateName: "emailFile",
+          data: {
+            title: "Welcome!",
+            heading: "Welcome to NovaFarm",
+            message: description,
+            user_email: useremail,
+            userName: selectedUser.businessName,
+            platform_name: plateFormName,
+            support_email: supportEmail,
+            date: formattedDate,
+            bodyText: "Thanks for joining. We're glad to have you!",
+            footerText: "© 2025 Your Company. All rights reserved.",
+          },
+        }),
+      }
+    );
+    const text = await res.text();
+    if (!res.ok) {
+      console.error("Function error:", res.status, text);
+      toast.error("Failed to send Email");
+    } else {
+      console.log("Function success:", text);
+      toast.success("Email send successfully");
+    }
+  };
+
+  const handleConfirmAction = async () => {
+    console.log("Confrim Clicked for User: ", selectedUser);
+    console.log("Account Status: ", accountStatus);
+
+    const newStatus = selectedUser.accountStatus ? false : true;
 
     const { error } = await supabase
       .from("users")
       .update({ accountStatus: newStatus })
-      .eq("id", selectedUser.id);
+      .eq("user_id", selectedUser.user_id);
 
     if (error) {
       console.error("Error updating account status:", error.message);
@@ -244,13 +370,12 @@ export const SuperAdminUsers: React.FC = () => {
       return;
     }
 
-    toast.success(
-      `Account successfully ${
-        newStatus === "active" ? "activated" : "suspended"
-      }`
-    );
+    toast.success("Account Updated Successfully");
+    console.log("Confrim Clicked for User: ", selectedUser);
+    const useremail = selectedUser?.email;
+    emailwithTemplate(useremail);
 
-    await fetchUsers(); // Refresh UI
+    await fetchUsers();
     setShowConfirmAction(false);
     setConfirmAction(null);
     setSelectedUser(null);
@@ -290,6 +415,11 @@ export const SuperAdminUsers: React.FC = () => {
           .trim()
       : "";
 
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const paginatedUsers = displayUsers.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(displayUsers.length / itemsPerPage);
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-[calc(100vh-200px)]">
@@ -304,6 +434,9 @@ export const SuperAdminUsers: React.FC = () => {
         <CreateAccountForm
           onSuccessfulSubmission={handleFormSuccess}
           onCancel={handleFormCancel}
+          onBack={() => {
+            setIsCreating(false);
+          }}
         />
       ) : (
         <>
@@ -346,7 +479,7 @@ export const SuperAdminUsers: React.FC = () => {
                     <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="active">Active</SelectItem>
                     <SelectItem value="suspended">Suspended</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
+                    {/* <SelectItem value="pending">Pending</SelectItem> */}
                   </SelectContent>
                 </Select>
 
@@ -356,9 +489,12 @@ export const SuperAdminUsers: React.FC = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Plans</SelectItem>
-                    <SelectItem value="basic">Basic</SelectItem>
-                    <SelectItem value="standard">Standard</SelectItem>
-                    <SelectItem value="premium">Premium</SelectItem>
+                    {plans.map((plan) => (
+                      <SelectItem key={plan?.id} value={plan?.plan_name}>
+                        {plan.plan_name.charAt(0).toUpperCase() +
+                          plan?.plan_name.slice(1)}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -373,7 +509,7 @@ export const SuperAdminUsers: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto my-4">
                 <Table>
                   <TableHeader>
                     <TableRow className="border-gray-200 bg-gray-50">
@@ -399,7 +535,7 @@ export const SuperAdminUsers: React.FC = () => {
                   </TableHeader>
                   <TableBody>
                     {displayUsers.length > 0 ? (
-                      displayUsers.map((user) => (
+                      paginatedUsers.map((user) => (
                         <TableRow
                           key={user.id}
                           className="border-gray-200 hover:bg-gray-50"
@@ -476,9 +612,9 @@ export const SuperAdminUsers: React.FC = () => {
                                   onClick={() => handleSuspendActivate(user)}
                                 >
                                   <Ban className="w-4 h-4 mr-2" />
-                                  {user.accountStatus === "suspended"
-                                    ? "Activate"
-                                    : "Suspend"}{" "}
+                                  {user.accountStatus
+                                    ? "Suspend "
+                                    : "Activate "}
                                   Account
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
@@ -498,6 +634,29 @@ export const SuperAdminUsers: React.FC = () => {
                     )}
                   </TableBody>
                 </Table>
+                <div className="btn_div flex justify-between items-center px-2">
+                  <div className="left_div flex justify-start items-center">
+                    <button
+                      className="border border-green-600 p-2 cursor-pointer rounded-sm"
+                      disabled={currentPage === 1}
+                      onClick={() => setCurrentPage((prev) => prev - 1)}
+                    >
+                      Previous
+                    </button>
+                  </div>
+                  <span>
+                    Page {currentPage} of {totalPages}{" "}
+                  </span>
+                  <div className="right_div left_div flex justify-end items-center">
+                    <button
+                      className="border border-green-600 p-2 cursor-pointer rounded-sm"
+                      disabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage((prev) => prev + 1)}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -505,7 +664,7 @@ export const SuperAdminUsers: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card className="bg-white border border-gray-200 shadow-sm">
               <CardContent className="p-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between text-left">
                   <div>
                     <p className="text-sm text-gray-600">Total Users</p>
                     <p className="text-2xl font-bold text-gray-900">
@@ -521,15 +680,11 @@ export const SuperAdminUsers: React.FC = () => {
 
             <Card className="bg-white border border-gray-200 shadow-sm">
               <CardContent className="p-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between text-left">
                   <div>
                     <p className="text-sm text-gray-600">Active</p>
                     <p className="text-2xl font-bold text-green-600">
-                      {
-                        allUsers.filter(
-                          (u: any) => u.accountStatus === "active"
-                        ).length
-                      }
+                      {activeUsers}
                     </p>
                   </div>
                   <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
@@ -541,35 +696,15 @@ export const SuperAdminUsers: React.FC = () => {
 
             <Card className="bg-white border border-gray-200 shadow-sm">
               <CardContent className="p-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between text-left">
                   <div>
                     <p className="text-sm text-gray-600">Suspended</p>
                     <p className="text-2xl font-bold text-red-600">
-                      {
-                        allUsers.filter(
-                          (u: any) => u.accountStatus === "suspended"
-                        ).length
-                      }
+                      {suspendedUsers}
                     </p>
                   </div>
                   <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
                     <Ban className="w-4 h-4 text-red-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white border border-gray-200 shadow-sm">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Premium Users</p>
-                    <p className="text-2xl font-bold text-purple-600">
-                      {allUsers.filter((u: any) => u.plan === "Premium").length}
-                    </p>
-                  </div>
-                  <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <CreditCard className="w-4 h-4 text-purple-600" />
                   </div>
                 </div>
               </CardContent>
@@ -583,7 +718,7 @@ export const SuperAdminUsers: React.FC = () => {
               onClose={() => {
                 setShowChangePlan(false);
                 setSelectedUser(null);
-                fetchUsers(); // Re-fetch users after plan change
+                fetchUsers();
               }}
             />
           )}
@@ -620,9 +755,7 @@ export const SuperAdminUsers: React.FC = () => {
                 setConfirmAction(null);
                 setSelectedUser(null);
               }}
-              confirmButtonText={
-                confirmAction.type === "suspend" ? "Suspend" : "Activate"
-              }
+              confirmButtonText={accountStatus}
               isDestructive={confirmAction.type === "suspend"}
             />
           )}

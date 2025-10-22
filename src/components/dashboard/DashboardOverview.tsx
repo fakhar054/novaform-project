@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { CreditCard, Calendar, Plus, HeadphonesIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import Spinner from "../Spinner";
+import { X } from "lucide-react";
 
 export const DashboardOverview: React.FC = () => {
   const [subscription, setSubscription] = useState();
@@ -11,6 +12,8 @@ export const DashboardOverview: React.FC = () => {
   const [profileChange, setProfileChange] = useState();
   const [updateDate, setUpdateDate] = useState();
   const [profileData, setProfileData] = useState();
+  const [visible, setVisible] = useState(true);
+  const [expire, setExpire] = useState(false);
 
   const navigate = useNavigate();
 
@@ -40,7 +43,18 @@ export const DashboardOverview: React.FC = () => {
           console.error("Error fetching subscriptions:", error.message);
         } else {
           console.log("Subscriptions:", data);
+          // const formattedCreatedAt = new Date(
+          //   data?.created_at
+          // ).toLocaleDateString();
+          const formatPeriodEnd = new Date(data?.current_period_end);
+          const today = new Date();
+          // console.log("todaay date: ", today);
           setSubscription(data);
+          if (today > formatPeriodEnd) {
+            setExpire(true);
+          } else {
+            setExpire(false);
+          }
         }
       } catch (err) {
         console.error("Unexpected error:", err);
@@ -99,26 +113,31 @@ export const DashboardOverview: React.FC = () => {
     const diffTime = todayOnly - planDateOnly;
     const diffDays = diffTime / (1000 * 60 * 60 * 24);
 
+    if (diffDays < 1) {
+      return "Today";
+    }
+
     return `${diffDays} days ago `;
   };
   const handleBookSupport = () => {
     navigate("/book-demo");
   };
 
-  const getPlanType = (
-    created_at: string,
-    current_period_end: string
-  ): string => {
-    const start = new Date(created_at);
-    const end = new Date(current_period_end);
+  function getPlanType(createdAt, endDate) {
+    const start = new Date(createdAt);
+    const end = new Date(endDate);
 
-    const diffMs = end.getTime() - start.getTime();
-    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    const diffMs = end - start;
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
 
-    console.log("diffDays (UTC):", diffDays);
-
-    return diffDays > 30 ? "Annual Billing" : "Monthly Billing";
-  };
+    if (diffDays >= 360) {
+      return "Yearly Package";
+    } else if (diffDays >= 28 && diffDays <= 32) {
+      return "Monthly Package";
+    } else {
+      return `Custom Duration: ${Math.round(diffDays)} days`;
+    }
+  }
 
   useEffect(() => {
     // console.log("i am runnning");
@@ -180,6 +199,25 @@ export const DashboardOverview: React.FC = () => {
     return <Spinner />;
   }
 
+  if (expire) {
+    return (
+      <div className="flex items-start justify-between bg-red-50 border border-red-300 text-red-800 p-4 rounded-xl shadow-sm max-w-screen">
+        <div>
+          <h3 className="font-semibold text-sm">Subscription Expired</h3>
+          <p className="text-sm mt-1">
+            Your <span className="font-medium">Novaform</span> subscription has
+            expired. Please renew to continue enjoying all premium features.
+          </p>
+        </div>
+        <button
+          onClick={() => setExpire(false)}
+          className="text-red-600 hover:text-red-800 ml-4"
+        >
+          <X size={18} />
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
       <div>
@@ -227,21 +265,6 @@ export const DashboardOverview: React.FC = () => {
             {formatCurrencyItalian(subscription?.amount_paid ?? 0)}
           </p>
         </div>
-
-        {/* <div className="bg-white rounded-lg shadow-sm border p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-[#078147]/10 rounded-lg flex items-center justify-center">
-              <Plus className="w-6 h-6 text-[#078147]" />
-            </div>
-          </div>
-          <h3 className="font-semibold text-black mb-1 text-left">
-            Active Add-ons
-          </h3>
-          <p className="text-2xl font-bold text-black mb-1 text-left">3</p>
-          <p className="text-sm text-gray-600 text-left">
-            SMS notifications, Analytics+
-          </p>
-        </div> */}
       </div>
 
       {/* Quick Actions */}

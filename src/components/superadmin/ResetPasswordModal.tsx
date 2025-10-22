@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import supabaseAdmin from "@/integrations/supabase/superadmin";
+import { SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 
 interface ResetPasswordModalProps {
   user: any;
@@ -39,30 +40,43 @@ export const ResetPasswordModal: React.FC<ResetPasswordModalProps> = ({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}`,
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
         },
         body: JSON.stringify({ userId, newPassword }),
       }
     );
 
-    return response.json();
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || "Failed to reset password");
+    }
+
+    console.log("Manual Password result:", data);
+    return data;
   };
 
-  // console.log("The user in resetPasswordMondel: ", user);
-  // console.log("The user id is : ", user.user_id);
   const user_id = user?.user_id;
+
   const handleSend = async () => {
     console.log("User emial for sending link: ", user.email);
     if (method === "email") {
       try {
-        const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-          type: "recovery",
-          email: user.email,
-          options: {
+        // const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+        //   type: "recovery",
+        //   email: user.email,
+        //   options: {
+        //     redirectTo: "http://localhost:8080/update-password",
+        //   },
+        // });
+
+        const { data, error } = await supabaseAdmin.auth.resetPasswordForEmail(
+          user.email,
+          {
             redirectTo: "http://localhost:8080/update-password",
-          },
-        });
+          }
+        );
 
         console.log("Reset password link response:", { data, error });
 
@@ -87,7 +101,7 @@ export const ResetPasswordModal: React.FC<ResetPasswordModalProps> = ({
       console.log("New password manuual: ", newPassword);
       resetUserPassword(user_id, newPassword);
 
-      // toast.success(`Password manually set to: ${newPassword}`);
+      toast.success(`Password manually set to: ${newPassword}`);
     }
 
     onClose();

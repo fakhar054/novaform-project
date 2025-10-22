@@ -25,94 +25,6 @@ const Login = () => {
 
   const [step, setStep] = useState("login");
   const [otp, setOtp] = useState("");
-  // const handleSubmit = async (e: React.FormEvent) => {
-  //   e.preventDefault();
-  //   const newErrors = { email: "", password: "" };
-
-  //   if (!email) {
-  //     newErrors.email = "Email is required";
-  //   } else if (!/\S+@\S+\.\S+/.test(email)) {
-  //     newErrors.email = "Please enter a valid email";
-  //   }
-
-  //   if (!password) {
-  //     newErrors.password = "Password is required";
-  //   } else if (password.length < 6) {
-  //     newErrors.password = "Password must be at least 6 characters";
-  //   }
-  //   setErrors(newErrors);
-  //   if (newErrors.email || newErrors.password) return;
-
-  //   try {
-  //     setLoading(true);
-  //     const { data: loginData, error: loginError } =
-  //       await supabase.auth.signInWithPassword({
-  //         email,
-  //         password,
-  //       });
-
-  //     // Default values
-  //     let actionType = "login";
-  //     let user_id = null;
-
-  //     if (loginData?.user) {
-  //       const { data: userData, error: userFetchError } = await supabase
-  //         .from("users")
-  //         .select("firstName,lastName")
-  //         .eq("email", userEmail)
-  //         .single();
-
-  //       user_id = loginData.user.id;
-  //       const userEmail = loginData.user.email;
-
-  //       const username = `${userData.firstName} ${userData.lastName}`;
-  //       const userId = userData.id;
-  //       await logActivity({
-  //         userId,
-  //         username,
-  //         email: userEmail,
-  //         actionType: "login",
-  //         location: "dashboard",
-  //         risk: "low",
-  //       });
-
-  //       toast.success("Welcome back!");
-  //       // console.log("User logged in:", loginData.user);
-
-  //       await supabase
-  //         .from("users")
-  //         .update({ last_login: new Date().toISOString() })
-  //         .eq("email", userEmail);
-
-  //       navigate("/dashboard");
-  //       return;
-  //     }
-
-  //     // Handle failed login
-  //     if (loginError) {
-  //       actionType = "failed";
-
-  //       // Optional: try to fetch user_id from users table
-  //       const { data: userRow } = await supabase
-  //         .from("users")
-  //         .select("user_id")
-  //         .eq("email", email)
-  //         .maybeSingle();
-
-  //       if (userRow) {
-  //         user_id = userRow.user_id;
-  //       }
-
-  //       await logActivity(user_id, email, actionType);
-  //       alert(loginError.message);
-  //     }
-  //   } catch (err) {
-  //     alert("Unexpected error. Please try again.");
-  //     console.error(err);
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
 
   function getFormattedDateTime() {
     const now = new Date();
@@ -177,6 +89,53 @@ const Login = () => {
     }
   };
 
+  const getStatus = async (userId) => {
+    const { data, error } = await supabase
+      .from("users")
+      .select("accountStatus")
+      .eq("user_id", userId)
+      .single();
+    if (error) {
+      console.error("Error fetching account status:", error);
+    } else {
+      console.log("Account Status:", data?.accountStatus);
+      return data?.accountStatus;
+    }
+  };
+
+  const fetchSubscriptionDates = async (userId) => {
+    try {
+      const { data, error } = await supabase
+        .from("subscription")
+        .select(" current_period_end")
+        .eq("user_id", userId)
+        .single();
+
+      if (error) {
+        console.error("Error fetching subscription:", error);
+        return null;
+      }
+
+      console.log("Subscription Data:", data);
+      const currentDate = new Date();
+      const endDate = new Date(data?.current_period_end);
+      console.log("End date: ", endDate);
+      const extendedEndDate = new Date(endDate);
+      extendedEndDate.setDate(endDate.getDate() + 5);
+
+      console.log("Extended end date (+5 days):", extendedEndDate);
+
+      if (currentDate > extendedEndDate) {
+        return false;
+      } else {
+        return true;
+      }
+    } catch (err) {
+      console.error("Unexpected error:", err);
+      return null;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -213,9 +172,23 @@ const Login = () => {
       const uuid = data.user?.id;
       const emailFromUser = data.user?.email;
 
+      //code for status check
+      const userStatus = await getStatus(uuid);
+      console.log("User Status: ", userStatus);
+
+      const canLogin = await fetchSubscriptionDates(uuid);
+      console.log("Can he Login: ", canLogin);
+
+      if (!userStatus || !canLogin) {
+        toast.error("You cannot login please contact the admin");
+        setLoading(false);
+        localStorage.removeItem("sb-ajbxscredobhqfksaqrk-auth-token");
+        return;
+      }
+
       console.log("Login successful → UUID:", uuid);
 
-      getUserRole(uuid);
+      await getUserRole(uuid);
 
       const twoStep = await fetchTwostep(uuid);
       console.log("Two-step verification status:", twoStep);
@@ -237,11 +210,10 @@ const Login = () => {
           toast.success("Verification link sent to your email");
         }
       } else {
-        // Step 4b: Direct login if disabled
         localStorage.setItem("token", token!);
         localStorage.setItem("id", uuid!);
 
-        updateLastLogin(uuid);
+        await updateLastLogin(uuid);
 
         toast.success("Login Successfully");
         navigate("/dashboard");
@@ -254,79 +226,6 @@ const Login = () => {
       setLoading(false);
     }
   };
-
-  // const handleSubmit = async (e: React.FormEvent) => {
-  //   e.preventDefault();
-  //   const newErrors = { email: "", password: "" };
-  //   if (!email) {
-  //     newErrors.email = "Email is required";
-  //   } else if (!/\S+@\S+\.\S+/.test(email)) {
-  //     newErrors.email = "Please enter a valid email";
-  //   }
-  //   if (!password) {
-  //     newErrors.password = "Password is required";
-  //   } else if (password.length < 6) {
-  //     newErrors.password = "Password must be at least 6 characters";
-  //   }
-  //   setErrors(newErrors);
-  //   if (newErrors.email || newErrors.password) return;
-
-  //   try {
-  //     const { data, error } = await supabase.auth.signInWithPassword({
-  //       email,
-  //       password,
-  //     });
-
-  //     if (error) {
-  //       console.log("Error while Login ", error.message);
-  //       toast.error(error.message);
-  //       return;
-  //     } else {
-  //       await supabase.auth.signOut();
-  //       console.log("Data from login: ", data);
-  //       const token = data.session.access_token;
-  //       const uuid = data.user.id;
-  //       console.log("UUID is :", uuid);
-
-  //       const email = data.user.email;
-  //       getUserRole(uuid);
-  //       const twoStep = await fetchTwostep(uuid);
-
-  //       console.log("To check two step verfication ::", twoStep);
-
-  //       const { error: otpError } = await supabase.auth.signInWithOtp({
-  //         email,
-  //         options: {
-  //           emailRedirectTo: "http://localhost:8080/auth-listener",
-  //         },
-  //       });
-  //       setLoading(false);
-
-  //       if (otpError) {
-  //         toast.error(otpError.message);
-  //         console.log("Error of optError: ", otpError.message);
-  //         return;
-  //       } else {
-  //         setStep("success");
-  //         toast.success("Link Send to Registered Email Address");
-
-  //         setLoading(false);
-  //       }
-  //     }
-  //   } catch (error) {
-  //     console.log("Error while sending emial: ", error);
-  //   }
-  // };
-
-  //       localStorage.setItem("token", token);
-  //       localStorage.setItem("id", uuid);
-  //       // const role = localStorage.getItem("role");
-  //       // console.log("Role From login: ", role);
-
-  //       toast.success("Login Successfully");
-  //       navigate("/dashboard");
-  //     }
-  // };
 
   return (
     <div className="min-h-screen flex">
@@ -438,7 +337,7 @@ const Login = () => {
             </div>
 
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
+              {/* <div className="flex items-center space-x-2">
                 <Checkbox
                   id="remember"
                   checked={rememberMe}
@@ -449,7 +348,7 @@ const Login = () => {
                 <Label htmlFor="remember" className="text-sm text-gray-600">
                   Remember me
                 </Label>
-              </div>
+              </div> */}
               <Link
                 to="/forgot-password"
                 className="text-sm text-green-600 hover:text-green-700 font-medium"

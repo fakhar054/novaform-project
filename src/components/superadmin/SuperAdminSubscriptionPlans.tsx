@@ -45,10 +45,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-// import { useToast } from "@/hooks/use-toast";
 import { ConfirmActionModal } from "./ConfirmActionModal";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import ReactQuill from "react-quill";
+import "react-quill/dist/quill.snow.css";
 
 interface SubscriptionPlan {
   id: number;
@@ -130,6 +131,7 @@ export const SuperAdminSubscriptionPlans: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [stateChanged, setStateChanged] = useState(false);
   const [plan_Full_Info, set_Plan_Full_Info] = useState({});
+  const [noOfActivePlans, setNoOfActivePlans] = useState(0);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
@@ -144,6 +146,10 @@ export const SuperAdminSubscriptionPlans: React.FC = () => {
   });
   const [isDeleting, setIsDeleting] = useState(false);
   const [selectdPlanid, setSeletcedPlanId] = useState();
+  const [totalPlans, setTotalPlans] = useState(0);
+  const [totalSubscribers, setTotalSubscribers] = useState(0);
+  const [revenue, setRevenue] = useState(0);
+  const [popularPlanName, setPopularPlanName] = useState();
 
   // Form state
   const [formData, setFormData] = useState({
@@ -164,6 +170,47 @@ export const SuperAdminSubscriptionPlans: React.FC = () => {
     tags: "",
   });
 
+  const fetchSubscribers = async () => {
+    try {
+      const { data, error } = await supabase.from("subscription").select("*");
+
+      if (error) throw error;
+      const count = data ? data.length : 0;
+      setTotalSubscribers(count);
+    } catch (err) {
+      console.error("Error fetching subscriptions:", err.message);
+    }
+  };
+
+  const fetchRevenue = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("subscription")
+        .select("amount_paid, created_at");
+
+      if (error) throw error;
+
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+
+      const total = data.reduce((sum, row) => {
+        const date = new Date(row.created_at);
+        if (
+          date.getMonth() === currentMonth &&
+          date.getFullYear() === currentYear
+        ) {
+          return sum + Number(row.amount_paid || 0);
+        }
+        return sum;
+      }, 0);
+
+      setRevenue(total);
+    } catch (err) {
+      console.error("Error fetching revenue:", err.message);
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       plan_name: "",
@@ -183,6 +230,7 @@ export const SuperAdminSubscriptionPlans: React.FC = () => {
       tags: "",
     });
   };
+
   const fetchPlans = async () => {
     const { data, error } = await supabase
       .from("subscription_plan")
@@ -191,16 +239,26 @@ export const SuperAdminSubscriptionPlans: React.FC = () => {
     if (error) {
       console.error("Error fetching plans:", error.message);
     } else {
+      console.log("Data coming in plan: ", data);
+      const highestObject = data?.reduce((max, obj) =>
+        obj.subscriber_count > max.subscriber_count ? obj : max
+      );
+      console.log("Object with max count: ", highestObject);
+      setPopularPlanName(highestObject?.plan_name);
+
       set_Daynamic_Plans(data || []);
+      setTotalPlans(data?.length);
+      const activePlans = data?.filter((plan) => plan.status === true).length;
+      setNoOfActivePlans(activePlans);
     }
     setLoading(false);
   };
 
   useEffect(() => {
     fetchPlans();
-  }, []);
-
-  // console.log("Data from plans", dyniamc_plans);
+    fetchSubscribers();
+    fetchRevenue();
+  }, [noOfActivePlans]);
 
   const authDataString = localStorage.getItem(
     "sb-ajbxscredobhqfksaqrk-auth-token"
@@ -241,7 +299,6 @@ export const SuperAdminSubscriptionPlans: React.FC = () => {
       type: formData.type as any,
       price_yearly: formData.price_yearly,
       price_monthly: formData.price_monthly,
-      // price: parseFloat(formData.price),
       billingCycle: formData.billingCycle,
       setupFee: formData.setupFee ? parseFloat(formData.setupFee) : undefined,
       annualDiscount: formData.annualDiscount
@@ -343,24 +400,6 @@ export const SuperAdminSubscriptionPlans: React.FC = () => {
     setEditingPlan(plan);
   };
 
-  // const handleEditPlan = (plan: SubscriptionPlan) => {
-  //   setEditingPlan(plan);
-  //   setIsCreateModalOpen(true);
-
-  //   setFormData({
-  //     plan_name: plan.plan_name,
-  //     plan_description: plan.plan_description,
-  //     status: plan.status,
-  //     //prices
-  //     price_monthly: plan.price_monthly,
-  //     // price: plan.price.toString(),
-  //     annualDiscount: plan.annualDiscount,
-  //     currency: plan.currency,
-  //     trialPeriod: plan.trialPeriod
-  //     tags: plan.tags,
-  //   });
-  // };
-
   const handleUpdatePlan = async () => {
     console.log("Updated Plan clicked and plan object: ", plan_Full_Info);
     const plan_product_id = plan_Full_Info.plan_product_id;
@@ -431,7 +470,7 @@ export const SuperAdminSubscriptionPlans: React.FC = () => {
   const toggleStatus = async (planId: string, currentStatus: boolean) => {
     const { data, error } = await supabase
       .from("subscription_plan")
-      .update({ status: !currentStatus }) // Flip true <-> false
+      .update({ status: !currentStatus })
       .eq("id", planId);
 
     if (error) {
@@ -466,6 +505,15 @@ export const SuperAdminSubscriptionPlans: React.FC = () => {
       default:
         return "bg-gray-100 text-gray-800";
     }
+  };
+
+  const formatCurrencyItalian = (amount) => {
+    const formatted = new Intl.NumberFormat("it-IT", {
+      style: "currency",
+      currency: "EUR",
+    }).format(amount);
+
+    return formatted.replace("€", "").trim().replace(/^/, "€ ");
   };
 
   return (
@@ -655,14 +703,23 @@ export const SuperAdminSubscriptionPlans: React.FC = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="tags">Tags/Labels (comma separated)</Label>
-                  <Input
+                  <Label htmlFor="tags">Tags/Labels</Label>
+                  <ReactQuill
                     id="tags"
+                    theme="snow"
                     value={formData.tags}
-                    onChange={(e) =>
-                      setFormData({ ...formData, tags: e.target.value })
+                    onChange={(content) =>
+                      setFormData({ ...formData, tags: content })
                     }
-                    placeholder="basic, popular, recommended"
+                    placeholder="Write tags here..."
+                    modules={{
+                      toolbar: [
+                        ["bold", "italic", "underline"],
+                        [{ list: "ordered" }, { list: "bullet" }],
+                        ["clean"],
+                      ],
+                    }}
+                    formats={["bold", "italic", "underline", "list", "bullet"]}
                   />
                 </div>
               </div>
@@ -706,9 +763,9 @@ export const SuperAdminSubscriptionPlans: React.FC = () => {
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-left">{plans.length}</div>
+            <div className="text-2xl font-bold text-left">{totalPlans}</div>
             <p className="text-xs text-muted-foreground text-left">
-              {plans.filter((p) => p.status === "active").length} active
+              {noOfActivePlans}
             </p>
           </CardContent>
         </Card>
@@ -722,7 +779,7 @@ export const SuperAdminSubscriptionPlans: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-left ">
-              {plans.reduce((sum, plan) => sum + plan.activeSubscribers, 0)}
+              {totalSubscribers}
             </div>
             <p className="text-xs text-muted-foreground text-left">
               Across all plans
@@ -739,14 +796,7 @@ export const SuperAdminSubscriptionPlans: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-left">
-              €
-              {plans
-                .filter((p) => p.type === "monthly" && p.status === "active")
-                .reduce(
-                  (sum, plan) => sum + plan.price * plan.activeSubscribers,
-                  0
-                )
-                .toLocaleString()}
+              {formatCurrencyItalian(revenue)}
             </div>
             <p className="text-xs text-muted-foreground text-left">
               From monthly plans
@@ -761,9 +811,7 @@ export const SuperAdminSubscriptionPlans: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-left">
-              {plans
-                .sort((a, b) => b.activeSubscribers - a.activeSubscribers)[0]
-                ?.name.split(" ")[1] || "N/A"}
+              {popularPlanName}
             </div>
             <p className="text-xs text-muted-foreground text-left">
               Most subscribers
@@ -805,12 +853,12 @@ export const SuperAdminSubscriptionPlans: React.FC = () => {
                   </TableCell>
                   <TableCell className="font-medium text-left">
                     {plan.price_monthly}
-                    <div className="text-sm text-gray-500">Every monthly</div>
+                    <div className="text-sm text-gray-500">Every Month</div>
                   </TableCell>
                   <TableCell>
                     <div className="font-medium text-left">
                       ${plan.price_yearly}
-                      <div className="text-sm text-gray-500">Every yearly</div>
+                      <div className="text-sm text-gray-500">Every Year</div>
                     </div>
                   </TableCell>
                   <TableCell className="text-left">
@@ -823,7 +871,7 @@ export const SuperAdminSubscriptionPlans: React.FC = () => {
                   <TableCell>
                     <div className="flex items-center">
                       <Users className="w-4 h-4 mr-1 text-gray-400" />
-                      {plan.subscribers}
+                      {plan?.subscriber_count}
                     </div>
                   </TableCell>
                   <TableCell>{formatCreatedAt(plan.created_at)}</TableCell>
