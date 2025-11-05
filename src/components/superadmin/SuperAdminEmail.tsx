@@ -41,6 +41,8 @@ interface SupabaseEmailTemplate {
   from_Email: string;
   trigger: string;
   email_Footer?: string;
+
+  staticBody?: string;
 }
 
 type NewSupabaseEmailTemplate = Omit<SupabaseEmailTemplate, "id"> & {
@@ -71,6 +73,7 @@ export const SuperAdminEmail: React.FC = () => {
   const [AllTriggers, setAllTriggers] = useState([]);
   const [selectedTrigger, setSelectedTrigger] = useState("");
   const [editorContent, setEditorContent] = useState("");
+  const [complteEmail, setCompleteEmail] = useState("");
 
   const [formData, setFormData] = useState({
     temp_name: "",
@@ -147,8 +150,13 @@ export const SuperAdminEmail: React.FC = () => {
       newTrigger: template.trigger,
     });
     setEditorContent(template.description || "");
+    const firstPart = template?.staticBody;
+    const secondPart = template?.description || "";
+    const fullBody = `${firstPart} ${secondPart}`;
+    console.log("full body: ", fullBody || "not staticbody");
 
-    console.log("Edit button Clicked: ", template);
+    setCompleteEmail(fullBody);
+    console.log("Edit button Clicked: ", fullBody);
     setView("editor");
   };
 
@@ -553,6 +561,25 @@ export const SuperAdminEmail: React.FC = () => {
                   placeholder="Start typing here..."
                 />
               </div>
+              <div className="grid">
+                <div>
+                  <label
+                    className="block text-sm font-medium mb-2"
+                    htmlFor="fullEmail"
+                  >
+                    Complete Email
+                  </label>
+
+                  <ReactQuill
+                    className=" full_email"
+                    theme="snow"
+                    readOnly={true}
+                    modules={{ toolbar: false }}
+                    value={complteEmail}
+                    placeholder="Start typing here..."
+                  />
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label
@@ -671,7 +698,7 @@ export const SuperAdminEmail: React.FC = () => {
             }`}
           >
             {/* Email Header */}
-            <div className="border-b border-gray-200 p-4 bg-gray-50">
+            {/* <div className="border-b border-gray-200 p-4 bg-gray-50">
               <div className="text-sm text-gray-600 space-y-1 text-left">
                 <div>
                   <strong>From:</strong> {selectedTemplate?.from_Name} &lt;
@@ -687,16 +714,66 @@ export const SuperAdminEmail: React.FC = () => {
                   {selectedTemplate?.reply_to_email}
                 </div>
               </div>
-            </div>
+            </div> */}
 
             {/* Footer */}
             <div className="p-4 text-left">
-              {/* <div>{selectedTemplate?.description}</div> */}
-              <div
-                dangerouslySetInnerHTML={{
-                  __html: selectedTemplate?.description || "",
-                }}
-              />
+              <div className="logo_div  flex items-center gap-[5px] pb-5 ">
+                <img src="favicon.png " className="w-10 x" />
+                <p className="logo_text font-bold text-xl">Novapharm</p>
+              </div>
+              <div className="body_div">
+                <p className="font-semibold pb-2">
+                  {selectedTemplate?.staticHeading}
+                </p>
+                <div className="message_dynamic">
+                  {/* <p>Hello User,</p> */}
+                  {/* {selectedTemplate?.staticBody} */}
+
+                  <div
+                    dangerouslySetInnerHTML={{
+                      __html: selectedTemplate?.staticBody || "",
+                    }}
+                  />
+                </div>
+
+                <div
+                  dangerouslySetInnerHTML={{
+                    __html: selectedTemplate?.description || "",
+                  }}
+                />
+                <p>The platform_name team.</p>
+              </div>
+
+              <div className="footer bg-[#066139] p-3 mt-3 text-white">
+                <div className="logo_div flex items-center gap-[5px] w-12 h-12 mt-3 pb-5">
+                  <img
+                    src="https://ajbxscredobhqfksaqrk.supabase.co/storage/v1/object/public/emailTemplate/logo.png"
+                    alt=""
+                  />
+                  <p className="logo_title font-semibold text-lg">Novapharm</p>
+                </div>
+                <div className="body_footer flex flex-col gap-[px]  ">
+                  <p>
+                    Copyright © year location.name. Tutti i diritti sono
+                    riservati.
+                  </p>
+                  <p>Eric Tavela – Via delle Rose 12, 15011 Acqui Terme (AL)</p>
+                  <p className="color_white">
+                    P.IVA 12345678901 – Email:
+                    <a href="#">support_email</a>
+                  </p>
+                  <p>
+                    Il nostro indirizzo email è:
+                    <a href="#">user_email</a>
+                  </p>
+                  <p>
+                    Ricevi questa email perché hai utilizzato i nostri servizi o
+                    hai fornito il tuo consenso alla comunicazione.
+                  </p>
+                  <p>Puoi smettere di ricevere questa email cliccando qui.</p>
+                </div>
+              </div>
 
               {selectedTemplate?.email_Footer && (
                 <div className="mt-8 pt-4 border-t border-gray-200">
