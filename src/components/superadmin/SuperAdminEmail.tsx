@@ -206,7 +206,7 @@ export const SuperAdminEmail: React.FC = () => {
       description: formData.description,
       status,
       trigger: formData.triggers,
-      email_Footer: formData.footer,
+      // email_Footer: formData.footer,
       from_Name: "NovaFarm Team",
       from_Email: "info@novapharm.io",
     };

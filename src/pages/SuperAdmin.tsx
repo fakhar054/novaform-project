@@ -59,6 +59,10 @@ const SuperAdmin: React.FC = () => {
         return <SuperAdminRoles />;
       case "viewPlans":
         return <AllPlans />;
+
+      case "email":
+        return <SuperAdminEmail />;
+
       default:
         return <SuperAdminOverview onSectionChange={setActiveSection} />;
     }

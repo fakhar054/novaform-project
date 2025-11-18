@@ -120,6 +120,14 @@ export const SuperAdminSidebar: React.FC<SuperAdminSidebarProps> = ({
     });
   }
 
+  if (permissions?.email || role === "super-admin") {
+    menuItems.push({
+      id: "email" as SuperAdminSection,
+      label: "Email",
+      icon: Mail,
+    });
+  }
+
   //i will show only super admin if also other user then un-comment code below
   // if (permissions?.user_roles || role === "super-admin") {
   if (role === "super-admin") {
@@ -136,11 +144,11 @@ export const SuperAdminSidebar: React.FC<SuperAdminSidebarProps> = ({
     icon: Package,
   });
 
-  menuItems.push({
-    id: "email" as SuperAdminSection,
-    label: "Email",
-    icon: Mail,
-  });
+  // menuItems.push({
+  //   id: "email" as SuperAdminSection,
+  //   label: "Email",
+  //   icon: Mail,
+  // });
 
   // const menuItems = [
   //   {

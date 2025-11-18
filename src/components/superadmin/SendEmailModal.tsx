@@ -90,6 +90,8 @@ export const SendEmailModal: React.FC<SendEmailModalProps> = ({
     getInvoicesByUser(user?.user_id);
     fetchSubscription(user?.user_id);
 
+    console.log("User Email is: ", user);
+
     if (isOpen) fetchTemplates();
   }, [isOpen]);
 
@@ -211,7 +213,8 @@ export const SendEmailModal: React.FC<SendEmailModalProps> = ({
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          to: "fakharali054@gmail.com",
+          to: user.email,
+          // to: "fakharali054@gmail.com",
           subject: emailData.subject,
           route,
           templateName: "emailFile",
